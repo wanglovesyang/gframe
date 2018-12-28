@@ -27,17 +27,55 @@ type ColEntry struct {
 
 type DataFrame struct {
 	// Columns-wise
-	columnNames []string
-	cols        []ColEntry
-	colMap      map[string]ColEntry
+	cols   []ColEntry
+	colMap map[string]ColEntry
 
 	shape   [2]int
 	idCols  [][]string
 	valCols [][]float32
 }
 
-func (d *DataFrame) registerColumns(types map[string]int) {
+func (d *DataFrame) reset() {
 	d.colMap = make(map[string]ColEntry)
+	d.cols = nil
+	d.shape = [2]int{0, 0}
+	d.idCols = nil
+	d.valCols = nil
+}
+
+func (d *DataFrame) createWithData(data map[string]interface{}) (reterr error) {
+	d.reset()
+	lastLen := -1
+	for k, v := range data {
+		switch vv := v.(type) {
+		case []float32:
+			ent := d.addColumn(k, false, false)
+			if len(vv) != lastLen && lastLen >= 0 {
+				return fmt.Errorf("size of column %s is not aligned", k)
+			}
+
+			d.valCols[ent.id] = vv
+			lastLen = len(vv)
+		case []string:
+			ent := d.addColumn(k, true, false)
+			if len(vv) != lastLen && lastLen >= 0 {
+				return fmt.Errorf("size of column %s is not aligned", k)
+			}
+
+			d.idCols[ent.id] = vv
+			lastLen = len(vv)
+		default:
+			return fmt.Errorf("invalid format of data are commited")
+		}
+	}
+
+	d.shape[0] = lastLen
+	d.shape[1] = len(data)
+	return
+}
+
+func (d *DataFrame) registerColumns(types map[string]int) {
+	d.reset()
 	for k, v := range types {
 		entry := ColEntry{
 			Name: k,
@@ -52,23 +90,58 @@ func (d *DataFrame) registerColumns(types map[string]int) {
 			entry.id = int32(len(d.valCols))
 			entry.tp = int8(v)
 			d.valCols = append(d.valCols, nil)
+		default:
+			continue
 		}
 
 		d.cols = append(d.cols, entry)
 		d.colMap[k] = entry
-
-		d.columnNames = append(d.columnNames, k)
 	}
 
-	d.shape[1] = len(d.columnNames)
+	d.shape[1] = len(d.cols)
+}
+
+func (d *DataFrame) addColumn(name string, id, alloc bool) (ret ColEntry) {
+	if _, suc := d.colMap[name]; suc {
+		panic(fmt.Errorf("column %s already exists in dataframe", name))
+	}
+
+	ret.Name = name
+	if id {
+		ret.tp = String
+		ret.id = int32(len(d.idCols))
+		if alloc {
+			d.idCols = append(d.idCols, make([]string, d.shape[0]))
+		} else {
+			d.idCols = append(d.idCols, nil)
+		}
+	} else {
+		ret.tp = Float32
+		ret.id = int32(len(d.valCols))
+		if alloc {
+			d.valCols = append(d.valCols, make([]float32, d.shape[0]))
+		} else {
+			d.valCols = append(d.valCols, nil)
+		}
+	}
+
+	d.cols = append(d.cols, ret)
+	d.colMap[name] = ret
+	d.shape[1] = len(d.cols)
+	return
 }
 
 func (d *DataFrame) Shape() [2]int {
 	return d.shape
 }
 
-func (d *DataFrame) Columns() []string {
-	return d.columnNames
+func (d *DataFrame) Columns() (ret []string) {
+	ret = make([]string, len(d.cols))
+	for i, k := range d.cols {
+		ret[i] = k.Name
+	}
+
+	return
 }
 
 func (d *DataFrame) getValueColumnNames() (ret []string) {
@@ -90,14 +163,9 @@ func (d *DataFrame) getIDColumnNames() (ret []string) {
 }
 
 func (d *DataFrame) checkHeaders(cols []string) (reterr error) {
-	if len(cols) != len(d.colMap) {
-		return fmt.Errorf("inconsistent csv header with regiestered")
-	}
-
-	for _, col := range cols {
-		if _, suc := d.colMap[col]; !suc {
-			return fmt.Errorf("Columns %s does not appear in registered list", col)
-		}
+	_, missing, _ := CompareStrList(d.Columns(), cols)
+	if len(missing) > 0 {
+		reterr = fmt.Errorf("columns %v are not provided in the csv, provided columns = %v", missing, cols)
 	}
 
 	return
@@ -111,6 +179,8 @@ func (d *DataFrame) alloc(cnt int) {
 	for i := range d.valCols {
 		d.valCols[i] = make([]float32, cnt)
 	}
+
+	d.shape[0] = cnt
 }
 
 func countLines(r io.Reader) (int, error) {
@@ -154,6 +224,7 @@ func (d *DataFrame) LoadCSV(path string) (reterr error) {
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, MaxCSVBufferSize), MaxCSVBufferSize)
 
+	scanner.Scan()
 	line := scanner.Text()
 	cols := strings.Split(line, ",")
 	if reterr = d.checkHeaders(cols); reterr != nil {
@@ -198,7 +269,7 @@ func (d *DataFrame) LoadCSV(path string) (reterr error) {
 	return
 }
 
-func (d *DataFrame) getValCols(cols []string) (ret [][]float32, reterr error) {
+func (d *DataFrame) getValCols(cols ...string) (ret [][]float32, reterr error) {
 	colVals := make([][]float32, len(cols))
 	for i, col := range cols {
 		ent, suc := d.colMap[col]
@@ -214,7 +285,7 @@ func (d *DataFrame) getValCols(cols []string) (ret [][]float32, reterr error) {
 	return colVals, nil
 }
 
-func (d *DataFrame) getIdCols(cols []string) (ret [][]string, reterr error) {
+func (d *DataFrame) getIdCols(cols ...string) (ret [][]string, reterr error) {
 	colVals := make([][]string, len(cols))
 	for i, col := range cols {
 		ent, suc := d.colMap[col]
@@ -230,10 +301,10 @@ func (d *DataFrame) getIdCols(cols []string) (ret [][]string, reterr error) {
 	return colVals, nil
 }
 
-func (d *DataFrame) SelectByColumns(cols ...string) (ret *DataFrame, reterr error) {
-	_, _, missing := CompareStrList(d.columnNames, cols)
+func (d *DataFrame) SelectByColumns(cols ...string) (ret *DataFrame) {
+	_, _, missing := CompareStrList(d.Columns(), cols)
 	if len(missing) > 0 {
-		reterr = fmt.Errorf("required columns: %v are missing", missing)
+		panic(fmt.Errorf("required columns: %v are missing", missing))
 		return
 	}
 
@@ -255,7 +326,6 @@ func (d *DataFrame) SelectByColumns(cols ...string) (ret *DataFrame, reterr erro
 
 		ret.colMap[col] = ent
 		ret.cols = append(ret.cols, ent)
-		ret.columnNames = append(ret.columnNames, col)
 	}
 
 	ret.shape[0] = d.shape[0]
@@ -263,25 +333,23 @@ func (d *DataFrame) SelectByColumns(cols ...string) (ret *DataFrame, reterr erro
 	return
 }
 
-func (d *DataFrame) SelectByRows(rows []int32) (ret *DataFrame, reterr error) {
+func (d *DataFrame) SelectByRows(rows ...int32) (ret *DataFrame) {
 	for _, id := range rows {
 		if id >= int32(d.shape[0]) {
-			reterr = fmt.Errorf("id %d exceeds the dataframe size", id)
+			panic(fmt.Errorf("id %d exceeds the dataframe size", id))
 			return
 		}
 	}
 
 	ret = &DataFrame{
-		colMap:      make(map[string]ColEntry),
-		cols:        make([]ColEntry, len(d.cols)),
-		columnNames: make([]string, len(d.cols)),
-		idCols:      make([][]string, len(d.cols)),
-		valCols:     make([][]float32, len(d.cols)),
-		shape:       [2]int{len(rows), d.shape[1]},
+		colMap:  make(map[string]ColEntry),
+		cols:    make([]ColEntry, len(d.cols)),
+		idCols:  make([][]string, len(d.idCols)),
+		valCols: make([][]float32, len(d.valCols)),
+		shape:   [2]int{len(rows), d.shape[1]},
 	}
 
 	copy(ret.cols, d.cols)
-	copy(ret.columnNames, d.columnNames)
 	for k, v := range d.colMap {
 		ret.colMap[k] = v
 	}
@@ -309,16 +377,14 @@ func (d *DataFrame) SelectRange(beg, end int32) (ret *DataFrame, reterr error) {
 	}
 
 	ret = &DataFrame{
-		colMap:      make(map[string]ColEntry),
-		cols:        make([]ColEntry, len(d.cols)),
-		columnNames: make([]string, len(d.cols)),
-		idCols:      make([][]string, len(d.cols)),
-		valCols:     make([][]float32, len(d.cols)),
-		shape:       [2]int{int(end - beg), d.shape[1]},
+		colMap:  make(map[string]ColEntry),
+		cols:    make([]ColEntry, len(d.cols)),
+		idCols:  make([][]string, len(d.cols)),
+		valCols: make([][]float32, len(d.cols)),
+		shape:   [2]int{int(end - beg), d.shape[1]},
 	}
 
 	copy(ret.cols, d.cols)
-	copy(ret.columnNames, d.columnNames)
 	for k, v := range d.colMap {
 		ret.colMap[k] = v
 	}
@@ -337,13 +403,15 @@ func (d *DataFrame) SelectRange(beg, end int32) (ret *DataFrame, reterr error) {
 func (d *DataFrame) MinValues(cols ...string) (ret []float32, reterr error) {
 	ret = make([]float32, len(cols))
 	for i, col := range cols {
-		ent := d.colMap[col]
-		if tp := ent.tp; tp == String {
+		if ent, suc := d.colMap[col]; !suc {
+			reterr = fmt.Errorf("column %s is not in the dataframe", col)
+			return
+		} else if tp := ent.tp; tp == String {
 			reterr = fmt.Errorf("min value operation cannot been applied to non-value columns")
 			return
+		} else {
+			ret[i] = minOfSlice(d.valCols[ent.id])
 		}
-
-		ret[i] = minOfSlice(d.valCols[ent.id])
 	}
 
 	return
@@ -352,35 +420,15 @@ func (d *DataFrame) MinValues(cols ...string) (ret []float32, reterr error) {
 func (d *DataFrame) MaxValues(cols ...string) (ret []float32, reterr error) {
 	ret = make([]float32, len(cols))
 	for i, col := range cols {
-		ent := d.colMap[col]
-		if tp := ent.tp; tp == String {
+		if ent, suc := d.colMap[col]; !suc {
+			reterr = fmt.Errorf("column %s is not in the dataframe", col)
+			return
+		} else if tp := ent.tp; tp == String {
 			reterr = fmt.Errorf("min value operation cannot been applied to non-value columns")
 			return
+		} else {
+			ret[i] = maxOfSlice(d.valCols[ent.id])
 		}
-
-		ret[i] = maxOfSlice(d.valCols[ent.id])
-	}
-
-	return
-}
-
-func (d *DataFrame) getKeyIDTuples(keyCols []string) (ret []KeyID, reterr error) {
-	kc, reterr := d.getIdCols(keyCols)
-	if reterr != nil {
-		return
-	}
-
-	buf := make([]string, len(keyCols))
-	for i := 0; i < d.shape[0]; i++ {
-		for j := 0; j < len(kc); j++ {
-			buf[j] = kc[j][i]
-		}
-
-		key := strings.Join(buf, IDMergeDelim)
-		ret = append(ret, KeyID{
-			Key: key,
-			ID:  int32(i),
-		})
 	}
 
 	return
@@ -448,10 +496,125 @@ func (d *DataFrame) Apply(ops map[string]interface{}) (ret map[string]float32) {
 	return
 }
 
-func (d *DataFrame) LeftMerge(on []string) (ret *DataFrame) {
-	return
-}
-
 func (d *DataFrame) Show() {
 	//TODO: show
+}
+
+type mappedEntry struct {
+	ColEntry
+	srcID int32
+}
+
+func (d *DataFrame) LeftMerge(t *DataFrame, on []string, tcols []string, suffix string, firstMatchOnly bool) (ret *DataFrame) {
+	gd := d.GroupBy(on...)
+	if len(tcols) > 0 {
+		t = t.SelectByColumns(append(on, tcols...)...)
+	}
+	gt := t.GroupBy(on...)
+
+	onSet := make(map[string]struct{})
+	for _, v := range on {
+		onSet[v] = struct{}{}
+	}
+
+	nh := d.shape[0]
+	groupOffset := make(map[string]int32)
+	var availableKeys []string
+	if !firstMatchOnly {
+		offset := int32(0)
+		for k, g := range gd.groupMap {
+			if tg, suc := gt.groupMap[k]; suc {
+				groupOffset[k] = offset
+				offset += int32(len(g.ids) + len(tg.ids))
+				availableKeys = append(availableKeys, k)
+			}
+		}
+
+		nh = int(offset)
+	}
+
+	nCols := make(map[string]int)
+	for _, col := range d.cols {
+		nCols[col.Name] = int(col.tp)
+	}
+
+	for _, col := range t.cols {
+		if _, suc := onSet[col.Name]; suc {
+			continue
+		}
+
+		if _, suc := nCols[col.Name]; suc {
+			nCols[col.Name+suffix] = int(col.tp)
+		} else {
+			nCols[col.Name] = int(col.tp)
+		}
+	}
+
+	ret = &DataFrame{}
+	ret.registerColumns(nCols)
+	ret.alloc(nh)
+
+	var leftColMapping []mappedEntry
+	var rightColMapping []mappedEntry
+
+	for _, col := range d.cols {
+		ent := mappedEntry{ColEntry: ret.colMap[col.Name], srcID: col.id}
+		leftColMapping = append(leftColMapping, ent)
+	}
+
+	for _, col := range t.cols {
+		if _, suc := onSet[col.Name]; suc {
+			continue
+		}
+
+		if ent, suc := ret.colMap[col.Name+suffix]; suc {
+			ment := mappedEntry{ColEntry: ent, srcID: col.id}
+			rightColMapping = append(rightColMapping, ment)
+		} else if ent, suc := ret.colMap[col.Name]; suc {
+			ment := mappedEntry{ColEntry: ent, srcID: col.id}
+			rightColMapping = append(rightColMapping, ment)
+		}
+	}
+
+	merge := func(did, tid, rid int32) {
+		for _, lm := range leftColMapping {
+			if lm.tp == String {
+				ret.idCols[lm.id][rid] = d.idCols[lm.srcID][did]
+			} else if lm.tp == Float32 {
+				ret.valCols[lm.id][rid] = d.valCols[lm.srcID][did]
+			}
+		}
+
+		for _, rm := range rightColMapping {
+			if rm.tp == String {
+				ret.idCols[rm.id][rid] = d.idCols[rm.srcID][tid]
+			} else if rm.tp == Float32 {
+				ret.valCols[rm.id][rid] = d.valCols[rm.srcID][tid]
+			}
+		}
+	}
+
+	Parallel(int(gSettings.ThreadNum), func(id int) {
+		for i := id; i < len(gd.groups); i += int(gSettings.ThreadNum) {
+			s := gd.groups[i]
+			k := s.getKeyStr()
+			t := gt.groupMap[k]
+			if firstMatchOnly {
+				trid := t.ids[0]
+				for _, id := range s.ids {
+					merge(id, trid, id)
+				}
+			} else {
+				offset := groupOffset[k]
+				for _, did := range s.ids {
+					for _, tid := range t.ids {
+						merge(did, tid, offset)
+						offset++
+					}
+				}
+			}
+		}
+	})
+
+	return
 }

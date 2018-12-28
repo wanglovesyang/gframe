@@ -1,6 +1,8 @@
 package gframe
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type EditableDataFrame struct {
 	DataFrame
@@ -48,12 +50,12 @@ func (e *EditableDataFrame) SetValue(rowId int32, col string, val float32) (rete
 	return
 }
 
-func (e *EditableDataFrame) GetIdColumns(cols []string) (ret [][]string, reterr error) {
-	return e.getIdCols(cols)
+func (e *EditableDataFrame) GetIdColumns(cols ...string) (ret [][]string, reterr error) {
+	return e.getIdCols(cols...)
 }
 
-func (e *EditableDataFrame) GetValColumns(cols []string) (ret [][]float32, reterr error) {
-	return e.getValCols(cols)
+func (e *EditableDataFrame) GetValColumns(cols ...string) (ret [][]float32, reterr error) {
+	return e.getValCols(cols...)
 }
 
 func (e *EditableDataFrame) PasteIdColumn(col string, ids []string) (reterr error) {
@@ -63,7 +65,7 @@ func (e *EditableDataFrame) PasteIdColumn(col string, ids []string) (reterr erro
 
 	ent, suc := e.colMap[col]
 	if !suc {
-		return fmt.Errorf("column %s does not exist in dataframe", col)
+		ent = e.addColumn(col, true, false)
 	}
 
 	if ent.tp != String {
@@ -82,7 +84,7 @@ func (e *EditableDataFrame) PasteValColumn(col string, vals []float32) (reterr e
 
 	ent, suc := e.colMap[col]
 	if !suc {
-		return fmt.Errorf("column %s does not exist in dataframe", col)
+		ent = e.addColumn(col, false, false)
 	}
 
 	if ent.tp != Float32 {
@@ -95,5 +97,55 @@ func (e *EditableDataFrame) PasteValColumn(col string, vals []float32) (reterr e
 }
 
 func (e *EditableDataFrame) Calculate(newCol string, fc interface{}) (reterr error) {
+	return
+}
+
+func Empty() (ret *EditableDataFrame) {
+	return &EditableDataFrame{}
+}
+
+func (e *EditableDataFrame) Concatenate(f *DataFrame, vertical bool) (reterr error) {
+	if vertical {
+		return e.concatenateVertical(f)
+	}
+
+	return e.concatenateHorizontal(f)
+}
+
+func (e *EditableDataFrame) concatenateVertical(f *DataFrame) (reterr error) {
+	if !compareColumns(e.colMap, f.colMap) {
+		return fmt.Errorf("Cannot concatenate vertically when two dataframes are with different columns")
+	}
+
+	for _, col := range e.cols {
+		sid := col.id
+		tid := f.colMap[col.Name].id
+
+		if col.tp == String {
+			e.idCols[sid] = append(e.idCols[sid], f.idCols[tid]...)
+		} else {
+			e.valCols[sid] = append(e.valCols[sid], f.valCols[tid]...)
+		}
+	}
+
+	e.shape[0] += f.shape[0]
+	return
+}
+
+func (e *EditableDataFrame) concatenateHorizontal(f *DataFrame) (reterr error) {
+	if f.shape[0] != e.shape[0] {
+		return fmt.Errorf("cannot concatenate horizontally when two data frame are ")
+	}
+
+	for _, col := range f.cols {
+		if col.tp == String {
+			ss := copyStringSlice(f.idCols[col.id])
+			e.PasteIdColumn(col.Name, ss)
+		} else if col.tp == Float32 {
+			ss := copyFloat32Slice(f.valCols[col.id])
+			e.PasteValColumn(col.Name, ss)
+		}
+	}
+
 	return
 }

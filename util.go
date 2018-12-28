@@ -216,3 +216,29 @@ func parallelSort(s, h []KeyID) {
 func compareFuncs(f1, f2 interface{}) bool {
 	return fmt.Sprintf("%v", f1) == fmt.Sprintf("%v", f2)
 }
+
+func compareColumns(f1, f2 map[string]ColEntry) bool {
+	if len(f1) != len(f2) {
+		return false
+	}
+
+	for k := range f1 {
+		if _, suc := f2[k]; !suc {
+			return false
+		}
+	}
+
+	return true
+}
+
+func copyFloat32Slice(s []float32) (ret []float32) {
+	ret = make([]float32, len(s))
+	copy(ret, s)
+	return
+}
+
+func copyStringSlice(s []string) (ret []string) {
+	ret = make([]string, len(s))
+	copy(ret, s)
+	return
+}

@@ -53,7 +53,7 @@ func (a *AugHistogram) locate(v float32) (ret int32) {
 	return
 }
 
-func (a *AugHistogram) order(v float32, col []float32) (ret int32) {
+func (a *AugHistogram) findOrder(v float32, col []float32) (ret int32) {
 	loc := a.locate(v)
 	l := int32(len(a.bins))
 	if loc < 0 {
@@ -62,6 +62,46 @@ func (a *AugHistogram) order(v float32, col []float32) (ret int32) {
 		ret = a.integral[l]
 	} else {
 		ret = a.integral[loc] + int32(sort.Search(len(a.bins[loc]), func(i int) bool { return v < col[a.bins[loc][i]] }))
+	}
+
+	return
+}
+
+func (a *AugHistogram) fillOrders(pct bool, out []float32) {
+	cnt := 0
+	all := a.integral[len(a.integral)-1]
+	dm := float32(all - 1)
+	if all <= 1 {
+		dm = 1
+	}
+
+	proc := func(v float32) float32 {
+		return 1 - v/dm
+	}
+	if !pct {
+		proc = func(v float32) float32 {
+			return v
+		}
+	}
+
+	for _, bin := range a.bins {
+		for _, b := range bin {
+			out[b] = proc(float32(b))
+			cnt++
+		}
+	}
+
+	return
+}
+
+func (a *AugHistogram) getSortedId() (ret []int32) {
+	cnt := 0
+	ret = make([]int32, a.integral[len(a.integral)-1])
+	for _, bin := range a.bins {
+		for _, b := range bin {
+			ret[cnt] = b
+			cnt++
+		}
 	}
 
 	return
@@ -82,6 +122,10 @@ func (g *GroupEntry) buildHistogram(cols [][]float32, binSize int32) {
 	}
 }
 
+func (g *GroupEntry) getKeyStr() string {
+	return strings.Join(g.keys, IDMergeDelim)
+}
+
 type DataFrameWithGroupBy struct {
 	DataFrame
 	keyCols []string
@@ -92,6 +136,28 @@ type DataFrameWithGroupBy struct {
 	//entries
 	groups   []*GroupEntry
 	groupMap map[string]*GroupEntry
+}
+
+func (d *DataFrameWithGroupBy) getKeyIDTuples(keyCols []string) (ret []KeyID, reterr error) {
+	kc, reterr := d.getIdCols(keyCols...)
+	if reterr != nil {
+		return
+	}
+
+	buf := make([]string, len(keyCols))
+	for i := 0; i < d.shape[0]; i++ {
+		for j := 0; j < len(kc); j++ {
+			buf[j] = kc[j][i]
+		}
+
+		key := strings.Join(buf, IDMergeDelim)
+		ret = append(ret, KeyID{
+			Key: key,
+			ID:  int32(i),
+		})
+	}
+
+	return
 }
 
 func (d *DataFrameWithGroupBy) buildFromDF(df *DataFrame, keyCols []string) (reterr error) {
@@ -140,7 +206,7 @@ func (d *DataFrameWithGroupBy) buildFromDF(df *DataFrame, keyCols []string) (ret
 
 func (d *DataFrameWithGroupBy) buildHistogram(cols []string) (reterr error) {
 	d.histCols = make(map[string]ColEntry)
-	colVals, reterr := d.getValCols(cols)
+	colVals, reterr := d.getValCols(cols...)
 	if reterr != nil {
 		return
 	}
@@ -338,6 +404,43 @@ func (d *DataFrameWithGroupBy) ApplyEachGroup(ops map[string]interface{}) (ret *
 	return
 }
 
-func (d *DataFrameWithGroupBy) Rank(cols []string, suffix string, inplace bool) (ret *DataFrame) {
+func (d *DataFrameWithGroupBy) Rank(pct bool, cols []string, suffix string, inplace bool) (ret *DataFrame) {
+	histIds := make([]int32, len(cols))
+	for i, c := range cols {
+		cl, suc := d.histCols[c]
+		if !suc {
+			panic(fmt.Errorf("column [%s] does not have histogram, is that an Id column?", c))
+		}
 
+		histIds[i] = cl.id
+	}
+
+	rankCols := make([][]float32, len(cols))
+	for i := range rankCols {
+		rankCols[i] = make([]float32, d.shape[0])
+	}
+
+	Parallel(int(gSettings.ThreadNum), func(id int) {
+		for i := id; i < len(rankCols); i += int(gSettings.ThreadNum) {
+			hid := histIds[i]
+			for _, g := range d.groups {
+				g.hists[hid].fillOrders(pct, rankCols[i])
+			}
+		}
+	})
+
+	var edt *EditableDataFrame
+	if inplace {
+		edt = d.Edit()
+	} else {
+		edt = Empty()
+	}
+
+	for i, c := range cols {
+		edt.PasteValColumn(c+suffix, rankCols[i])
+	}
+
+	ret = &DataFrame{}
+	*ret = edt.DataFrame
+	return
 }

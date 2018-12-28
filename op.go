@@ -50,7 +50,7 @@ func reduceMax(a, b float32) float32 {
 	return b
 }
 
-var ReduceMin = NewBinaryOP(reduceMin, -float32(math.MaxFloat32))
+var ReduceMin = NewBinaryOP(reduceMin, float32(math.MaxFloat32))
 
 func reduceMin(a, b float32) float32 {
 	if a > b {
