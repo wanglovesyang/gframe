@@ -2,6 +2,8 @@ package gframe
 
 import (
 	"fmt"
+	"log"
+	"reflect"
 )
 
 type EditableDataFrame struct {
@@ -78,8 +80,12 @@ func (e *EditableDataFrame) PasteIdColumn(col string, ids []string) (reterr erro
 }
 
 func (e *EditableDataFrame) PasteValColumn(col string, vals []float32) (reterr error) {
-	if len(vals) != e.shape[0] {
-		return fmt.Errorf("the size of provided column are not consistent with dataframe [%d / %d]", len(vals), e.shape[0])
+	if !e.Empty() {
+		if len(vals) != e.shape[0] {
+			return fmt.Errorf("the size of provided column are not consistent with dataframe [%d / %d]", len(vals), e.shape[0])
+		}
+	} else {
+		e.shape[0] = len(vals)
 	}
 
 	ent, suc := e.colMap[col]
@@ -93,15 +99,95 @@ func (e *EditableDataFrame) PasteValColumn(col string, vals []float32) (reterr e
 	}
 
 	e.valCols[ent.id] = vals
+	e.shape[1] = len(e.cols)
 	return
 }
 
-func (e *EditableDataFrame) Calculate(newCol string, fc interface{}) (reterr error) {
+func (e *EditableDataFrame) makeArgList(cols []ColEntry, rowId int32) (ret []reflect.Value) {
+	ret = make([]reflect.Value, len(cols))
+	for i, col := range cols {
+		if col.tp == String {
+			ret[i] = reflect.ValueOf(e.idCols[col.id][rowId])
+		} else if col.tp == Float32 {
+			ret[i] = reflect.ValueOf(e.valCols[col.id][rowId])
+		}
+	}
+
+	return
+}
+
+func (e *EditableDataFrame) fillCalculateResult(cols []ColEntry, res []reflect.Value, rowId int32) {
+	for i, col := range cols {
+		if col.tp == String {
+			e.idCols[col.id][rowId] = res[i].String()
+		} else if col.tp == Float32 {
+			e.valCols[col.id][rowId] = float32(res[i].Float())
+		}
+	}
+}
+
+func (e *EditableDataFrame) Calculate(argCols, retCols []string, fc interface{}) (reterr error) {
+	argColsE := make([]ColEntry, len(argCols))
+	for i, col := range argCols {
+		if ent, suc := e.colMap[col]; !suc {
+			reterr = fmt.Errorf("column %s is not in the dataframe", col)
+			return
+		} else {
+			argColsE[i] = ent
+		}
+	}
+
+	retColsE := make([]ColEntry, len(retCols))
+	for i, col := range retCols {
+		if ent, suc := e.colMap[col]; !suc {
+			retColsE[i] = ColEntry{
+				Name: col,
+				id:   Unknown,
+				tp:   Unknown,
+			}
+		} else {
+			retColsE[i] = ent
+		}
+	}
+
+	if reterr = checkParamterType(fc, argColsE); reterr != nil {
+		return
+	}
+
+	var withErr bool
+	if withErr, reterr = checkReturnType(fc, retColsE); reterr != nil {
+		return
+	}
+
+	for i, col := range retColsE {
+		if col.id < 0 {
+			ent := e.addColumn(col.Name, col.tp == String, true)
+			retColsE[i] = ent
+		}
+	}
+
+	fcv := reflect.ValueOf(fc)
+	Parallel(int(gSettings.ThreadNum), func(id int) {
+		for i := id; i < e.shape[0]; i += int(gSettings.ThreadNum) {
+			vals := e.makeArgList(argColsE, int32(i))
+			res := fcv.Call(vals)
+			if withErr {
+				lastErr := vals[len(vals)-1].Interface()
+				log.Printf("Error in calculating, %v", lastErr)
+				reterr = lastErr.(error)
+			}
+
+			e.fillCalculateResult(retColsE, res, int32(i))
+		}
+	})
+
 	return
 }
 
 func Empty() (ret *EditableDataFrame) {
-	return &EditableDataFrame{}
+	ret = &EditableDataFrame{}
+	ret.reset()
+	return
 }
 
 func (e *EditableDataFrame) Concatenate(f *DataFrame, vertical bool) (reterr error) {

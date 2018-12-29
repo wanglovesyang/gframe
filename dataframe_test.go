@@ -455,3 +455,7 @@ func TestDataFrame_Apply_consistency_check(t *testing.T) {
 		t.Errorf("invalid apply result for column c, %v", res["c"])
 	}
 }
+
+func TestDataFrame_LeftMerge(t *testing.T) {
+
+}

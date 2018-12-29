@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	String = iota
+	Unknown = -1
+	String  = iota
 	Float32
 )
 
@@ -496,6 +497,10 @@ func (d *DataFrame) Apply(ops map[string]interface{}) (ret map[string]float32) {
 	return
 }
 
+func (d *DataFrame) Empty() bool {
+	return len(d.cols) == 0
+}
+
 func (d *DataFrame) Show() {
 	//TODO: show
 }
@@ -616,5 +621,18 @@ func (d *DataFrame) LeftMerge(t *DataFrame, on []string, tcols []string, suffix 
 		}
 	})
 
+	return
+}
+
+func ReadCSVWithHeaderInfo(header map[string]int, path string) (ret *DataFrame, reterr error) {
+	defer func() {
+		if reterr != nil {
+			ret = nil
+		}
+	}()
+
+	ret = &DataFrame{}
+	ret.registerColumns(header)
+	reterr = ret.LoadCSV(path)
 	return
 }

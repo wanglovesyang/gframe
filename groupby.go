@@ -38,6 +38,7 @@ func (a *AugHistogram) build(ids []int32, col []float32, binSize int32) {
 		a.bins[l] = append(a.bins[l], id)
 	}
 
+	a.integral = make([]int32, len(a.bins))
 	inte := int32(0)
 	for i, b := range a.bins {
 		a.integral[i] = inte
@@ -376,11 +377,11 @@ func (d *DataFrameWithGroupBy) ApplyEachGroup(ops map[string]interface{}) (ret *
 			op := opList[i]
 			ent := d.colMap[op.col]
 			if ent.tp == String {
-				rs := d.applyEachGroupID(ent, op)
+				rs := d.applyEachGroupID(ent, op.Op)
 				rid := ret.colMap[op.col+op.Surfix].id
 				ret.idCols[rid] = rs
 			} else if ent.tp == Float32 {
-				rs := d.applyEachGroupVal(ent, op)
+				rs := d.applyEachGroupVal(ent, op.Op)
 				rid := ret.colMap[op.col+op.Surfix].id
 				ret.valCols[rid] = rs
 			}

@@ -1,7 +1,9 @@
 package gframe
 
 import (
+	"fmt"
 	"math"
+	"reflect"
 	"sort"
 )
 
@@ -118,4 +120,99 @@ func validOperation(op interface{}) bool {
 	}
 
 	return false
+}
+
+func checkParamterType(f interface{}, cols []ColEntry) (reterr error) {
+	tp := reflect.TypeOf(f)
+	if tp.Kind() != reflect.Func {
+		reterr = fmt.Errorf("the given processor is not a function")
+		return
+	}
+
+	if tp.NumIn() != len(cols) {
+		reterr = fmt.Errorf("paramter list are of different length of columns")
+		return
+	}
+
+	var errList []string
+	for i := 0; i < tp.NumIn(); i++ {
+		if cols[i].tp == String {
+			if tp.In(i).Kind() != reflect.String {
+				errList = append(errList, cols[i].Name)
+			}
+		} else if cols[i].tp == Float32 {
+			if tp.In(i).Kind() != reflect.Float32 {
+				errList = append(errList, cols[i].Name)
+			}
+		} else {
+			reterr = fmt.Errorf("unacceptable type of column %s", cols[i].Name)
+			return
+		}
+	}
+
+	if len(errList) > 0 {
+		reterr = fmt.Errorf("type of columns %v are not aligned with given function paramters", errList)
+	}
+
+	return
+}
+
+var errorInterface = reflect.TypeOf((*error)(nil)).Elem()
+
+func checkReturnType(f interface{}, cols []ColEntry) (withErr bool, reterr error) {
+	tp := reflect.TypeOf(f)
+	if tp.Kind() != reflect.Func {
+		reterr = fmt.Errorf("the given processor is not a function")
+		return
+	}
+
+	if tp.NumOut() == 0 {
+		reterr = fmt.Errorf("the processor function is without any output")
+		return
+	}
+
+	if tp.Out(tp.NumOut()-1).Kind() == reflect.Interface &&
+		tp.Out(tp.NumOut()-1).Implements(errorInterface) {
+		withErr = true
+	}
+
+	d := tp.NumOut() - len(cols)
+	if withErr {
+		d--
+	}
+
+	if d != 0 {
+		reterr = fmt.Errorf("the columns' length are not aligned with given function's output")
+		return
+	}
+
+	var errList []string
+	for i := 0; i < tp.NumOut(); i++ {
+		if cols[i].tp == String {
+			if tp.Out(i).Kind() != reflect.String {
+				errList = append(errList, cols[i].Name)
+			}
+		} else if cols[i].tp == Float32 {
+			if tp.Out(i).Kind() != reflect.Float32 {
+				errList = append(errList, cols[i].Name)
+			}
+		} else if cols[i].tp == Unknown {
+			if tp.Out(i).Kind() == reflect.Float32 {
+				cols[i].tp = Float32
+			} else if tp.Out(i).Kind() == reflect.String {
+				cols[i].tp = String
+			} else {
+				errList = append(errList, cols[i].Name)
+			}
+		} else {
+			reterr = fmt.Errorf("unacceptable type of column %s", cols[i].Name)
+			return
+		}
+	}
+
+	if len(errList) > 0 {
+		reterr = fmt.Errorf("type of columns %v are not aligned with given function outputs", errList)
+	}
+
+	return
 }
