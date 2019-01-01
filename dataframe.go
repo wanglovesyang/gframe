@@ -501,10 +501,6 @@ func (d *DataFrame) Empty() bool {
 	return len(d.cols) == 0
 }
 
-func (d *DataFrame) Show() {
-	//TODO: show
-}
-
 type mappedEntry struct {
 	ColEntry
 	srcID int32

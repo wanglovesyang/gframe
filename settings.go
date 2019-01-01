@@ -1,8 +1,9 @@
 package gframe
 
 type Settings struct {
-	ThreadNum     int32
-	HistogramBins int32
+	ThreadNum      int32
+	HistogramBins  int32
+	FloatPrecision int32
 }
 
 var DefaultSettings = Settings{
