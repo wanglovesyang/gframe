@@ -153,11 +153,11 @@ func TestDataFrame_LoadCSV_error_check(t *testing.T) {
 		},
 	)
 
-	if err := d.LoadCSV("does/not/exist"); err == nil {
+	if err := d.loadCSV("does/not/exist", false); err == nil {
 		t.Errorf("nil error when loading a non-exist csv")
 	}
 
-	if err := d.LoadCSV("illpose.csv"); err == nil {
+	if err := d.loadCSV("illpose.csv", false); err == nil {
 		t.Errorf("nil error when loading a ill-posed csv")
 	}
 }
@@ -172,7 +172,7 @@ func TestDataFrame_LoadCSV_consistency_check(t *testing.T) {
 		},
 	)
 
-	if err := d.LoadCSV("correct.csv"); err != nil {
+	if err := d.loadCSV("correct.csv", false); err != nil {
 		t.Fatalf("loading err: %v", err)
 	}
 
@@ -203,7 +203,7 @@ func TestData_getValCols(t *testing.T) {
 		},
 	)
 
-	if err := d.LoadCSV("correct.csv"); err != nil {
+	if err := d.loadCSV("correct.csv", false); err != nil {
 		t.Fatalf("loading err: %v", err)
 	}
 
@@ -235,7 +235,7 @@ func TestData_getIdCols(t *testing.T) {
 		},
 	)
 
-	if err := d.LoadCSV("correct.csv"); err != nil {
+	if err := d.loadCSV("correct.csv", false); err != nil {
 		t.Fatalf("loading err: %v", err)
 	}
 
@@ -458,4 +458,23 @@ func TestDataFrame_Apply_consistency_check(t *testing.T) {
 
 func TestDataFrame_LeftMerge(t *testing.T) {
 
+}
+
+func TestDataFrame_smartColDet(t *testing.T) {
+	d := &DataFrame{}
+	if err := d.loadCSV("correct.csv", true); err != nil {
+		t.Errorf("Error on loading, %v", err)
+	}
+
+	if d.colMap["a"].tp != String {
+		t.Errorf("Invalid data type of column a")
+	}
+
+	if d.colMap["b"].tp != Float32 {
+		t.Errorf("Invalid data type of column b")
+	}
+
+	if d.colMap["e"].tp != Float32 {
+		t.Errorf("Invalid data type of column e")
+	}
 }
