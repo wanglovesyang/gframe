@@ -14,9 +14,9 @@ func (d *DataFrame) Show() {
 		termSize = [2]int32{300, 20}
 	}
 
-	//log.Printf("term_size=%v", termSize)
+	log.Printf("term_size=%v", termSize)
 	leakSizeY, leakSizeX := calcLeakSize(termSize)
-	//log.Printf("leak_size=[%d, %d]", leakSizeY, leakSizeX)
+	log.Printf("leak_size=[%d, %d]", leakSizeY, leakSizeX)
 
 	widths := make([]int32, len(d.cols)+1)
 	rawMtx := make([][]string, len(d.cols)+1)

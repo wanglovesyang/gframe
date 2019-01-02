@@ -268,8 +268,20 @@ type window struct {
 }
 
 const MaxTTYTRY = 10
+const MinWidth = 10
+const MinHeight = 7
 
 func getTermSize() (ret [2]int32, reterr error) {
+	defer func() {
+		if ret[0] < MinHeight {
+			ret[0] = MinHeight
+		}
+
+		if ret[1] < MinWidth {
+			ret[0] = MinWidth
+		}
+	}()
+
 	var ttyFd uintptr
 	tty, err := os.Open("/dev/tty")
 	if err != nil {
