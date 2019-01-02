@@ -8,7 +8,7 @@ import (
 )
 
 func (d *DataFrame) Show() {
-	termSize, err := getTermSize()
+	termSize, err := GetTermSize()
 	if err != nil {
 		log.Printf("fail to get term size, %v", err)
 		termSize = [2]int32{300, 20}
