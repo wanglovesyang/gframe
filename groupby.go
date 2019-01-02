@@ -445,3 +445,115 @@ func (d *DataFrameWithGroupBy) Rank(pct bool, cols []string, suffix string, inpl
 	*ret = edt.DataFrame
 	return
 }
+
+func (d *DataFrameWithGroupBy) LeftMerge(t *DataFrameWithGroupBy, suffix string, firstMatchOnly bool) (ret *DataFrame) {
+	if !StrSeqEqual(d.keyCols, t.keyCols) {
+		panic(fmt.Errorf("unable to merge two groupby frame with different key columns"))
+	}
+
+	onSet := make(map[string]struct{})
+	for _, v := range d.keyCols {
+		onSet[v] = struct{}{}
+	}
+
+	nh := d.shape[0]
+	groupOffset := make(map[string]int32)
+	var availableKeys []string
+	if !firstMatchOnly {
+		offset := int32(0)
+		for k, g := range d.groupMap {
+			if tg, suc := t.groupMap[k]; suc {
+				groupOffset[k] = offset
+				offset += int32(len(g.ids) + len(tg.ids))
+				availableKeys = append(availableKeys, k)
+			}
+		}
+
+		nh = int(offset)
+	}
+
+	nCols := make(map[string]int)
+	for _, col := range d.cols {
+		nCols[col.Name] = int(col.tp)
+	}
+
+	for _, col := range t.cols {
+		if _, suc := onSet[col.Name]; suc {
+			continue
+		}
+
+		if _, suc := nCols[col.Name]; suc {
+			nCols[col.Name+suffix] = int(col.tp)
+		} else {
+			nCols[col.Name] = int(col.tp)
+		}
+	}
+
+	ret = &DataFrame{}
+	ret.registerColumns(nCols)
+	ret.alloc(nh)
+
+	var leftColMapping []mappedEntry
+	var rightColMapping []mappedEntry
+
+	for _, col := range d.cols {
+		ent := mappedEntry{ColEntry: ret.colMap[col.Name], srcID: col.id}
+		leftColMapping = append(leftColMapping, ent)
+	}
+
+	for _, col := range t.cols {
+		if _, suc := onSet[col.Name]; suc {
+			continue
+		}
+
+		if ent, suc := ret.colMap[col.Name+suffix]; suc {
+			ment := mappedEntry{ColEntry: ent, srcID: col.id}
+			rightColMapping = append(rightColMapping, ment)
+		} else if ent, suc := ret.colMap[col.Name]; suc {
+			ment := mappedEntry{ColEntry: ent, srcID: col.id}
+			rightColMapping = append(rightColMapping, ment)
+		}
+	}
+
+	merge := func(did, tid, rid int32) {
+		for _, lm := range leftColMapping {
+			if lm.tp == String {
+				ret.idCols[lm.id][rid] = d.idCols[lm.srcID][did]
+			} else if lm.tp == Float32 {
+				ret.valCols[lm.id][rid] = d.valCols[lm.srcID][did]
+			}
+		}
+
+		for _, rm := range rightColMapping {
+			if rm.tp == String {
+				ret.idCols[rm.id][rid] = d.idCols[rm.srcID][tid]
+			} else if rm.tp == Float32 {
+				ret.valCols[rm.id][rid] = d.valCols[rm.srcID][tid]
+			}
+		}
+	}
+
+	Parallel(int(gSettings.ThreadNum), func(id int) {
+		for i := id; i < len(d.groups); i += int(gSettings.ThreadNum) {
+			s := d.groups[i]
+			k := s.getKeyStr()
+			t := t.groupMap[k]
+			if firstMatchOnly {
+				trid := t.ids[0]
+				for _, id := range s.ids {
+					merge(id, trid, id)
+				}
+			} else {
+				offset := groupOffset[k]
+				for _, did := range s.ids {
+					for _, tid := range t.ids {
+						merge(did, tid, offset)
+						offset++
+					}
+				}
+			}
+		}
+	})
+
+	return
+}

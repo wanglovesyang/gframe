@@ -33,6 +33,20 @@ func Parallel(threads int, f func(id int)) (reterr error) {
 	return
 }
 
+func StrSeqEqual(a, b []string) (ret bool) {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i, aa := range a {
+		if aa != b[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
 func CompareStrList(a, b []string) (intr, amb, bma []string) {
 	aa := make([]string, len(a))
 	copy(aa, a)
