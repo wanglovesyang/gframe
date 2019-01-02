@@ -204,12 +204,59 @@ func countLines(r io.Reader) (int, error) {
 	}
 }
 
-func (d *DataFrame) LoadCSV(path string) (reterr error) {
+func (d *DataFrame) smartColDet(f io.Reader) (reterr error) {
+	cols := make(map[string]int)
+	scanner := bufio.NewScanner(f)
+	scanner.Scan()
+	colNames := strings.Split(scanner.Text(), ",")
+	colTypes := make([]int, len(colNames))
+	for i := range colTypes {
+		colTypes[i] = Float32
+	}
+
+	for i := 0; i < int(gSettings.ExploringDepth); i++ {
+		if !scanner.Scan() {
+			break
+		}
+
+		if err := scanner.Err(); err != nil {
+			reterr = err
+			return
+		}
+
+		eles := strings.Split(scanner.Text(), ",")
+		for j := 0; j < len(eles); j++ {
+			if colTypes[j] == Float32 {
+				if _, err := strconv.ParseFloat(eles[j], 64); err != nil {
+					colTypes[j] = String
+				}
+			}
+		}
+	}
+
+	for i, tp := range colTypes {
+		cols[colNames[i]] = tp
+	}
+
+	d.reset()
+	d.registerColumns(cols)
+	return
+}
+
+func (d *DataFrame) loadCSV(path string, smartCols bool) (reterr error) {
 	f, reterr := os.Open(path)
 	if reterr != nil {
 		return
 	}
 	defer f.Close()
+
+	if smartCols {
+		d.smartColDet(f)
+	}
+
+	if _, reterr = f.Seek(0, 0); reterr != nil {
+		return
+	}
 
 	lineCount, reterr := countLines(f)
 	if reterr != nil {
@@ -502,10 +549,6 @@ func (d *DataFrame) Empty() bool {
 	return len(d.cols) == 0
 }
 
-func (d *DataFrame) Show() {
-	//TODO: show
-}
-
 type mappedEntry struct {
 	ColEntry
 	srcID int32
@@ -634,6 +677,24 @@ func ReadCSVWithHeaderInfo(header map[string]int, path string) (ret *DataFrame, 
 
 	ret = &DataFrame{}
 	ret.registerColumns(header)
-	reterr = ret.LoadCSV(path)
+	reterr = ret.loadCSV(path, false)
+	return
+}
+
+func ReadCSV(path string) (ret *DataFrame, reterr error) {
+	defer func() {
+		if reterr != nil {
+			ret = nil
+		}
+	}()
+
+	ret = &DataFrame{}
+	reterr = ret.loadCSV(path, true)
+	return
+}
+
+func CreateByData(data map[string]interface{}) (ret *DataFrame) {
+	ret = &DataFrame{}
+	ret.createWithData(data)
 	return
 }

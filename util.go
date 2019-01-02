@@ -2,6 +2,7 @@ package gframe
 
 import (
 	"fmt"
+	"os"
 	"runtime/debug"
 	"sort"
 	"sync"
@@ -245,24 +246,39 @@ func copyStringSlice(s []string) (ret []string) {
 	return
 }
 
-type winsize struct {
+type window struct {
 	Row    uint16
 	Col    uint16
 	Xpixel uint16
 	Ypixel uint16
 }
 
-func getTermSize() (ret []int32) {
-	ws := &winsize{}
-	retCode, _, errno := syscall.Syscall(syscall.SYS_IOCTL,
-		uintptr(syscall.Stdin),
-		uintptr(syscall.TIOCGWINSZ),
-		uintptr(unsafe.Pointer(ws)))
+const MaxTTYTRY = 10
 
-	if int(retCode) == -1 {
-		panic(errno)
+func getTermSize() (ret [2]int32, reterr error) {
+	var ttyFd uintptr
+	tty, err := os.Open("/dev/tty")
+	if err != nil {
+		reterr = fmt.Errorf("fail to open tty, %v", err)
+		return
+	}
+	ttyFd = tty.Fd()
+	defer tty.Close()
+
+	for i := 0; i < MaxTTYTRY; i++ {
+		w := new(window)
+		_, _, err := syscall.Syscall(syscall.SYS_IOCTL,
+			ttyFd,
+			syscall.TIOCGWINSZ,
+			uintptr(unsafe.Pointer(w)),
+		)
+
+		if err == 0 {
+			ret[0], ret[1] = int32(w.Row), int32(w.Col)
+			return
+		}
 	}
 
-	ret[0], ret[1] = int32(ws.Row), int32(ws.Col)
+	reterr = fmt.Errorf("System call failed with max try")
 	return
 }
