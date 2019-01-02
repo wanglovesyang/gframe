@@ -10,6 +10,46 @@ type EditableDataFrame struct {
 	DataFrame
 }
 
+func (e *EditableDataFrame) DropColumn(col string) (reterr error) {
+	ent, suc := e.colMap[col]
+	if !suc {
+		reterr = fmt.Errorf("column %s does not exist in dataframe", col)
+		return
+	}
+
+	var offInCols int
+	for i, col := range e.cols {
+		if col.tp == ent.tp {
+			if col.id > ent.id {
+				e.cols[i].id--
+			} else if col.id == ent.id {
+				offInCols = i
+			}
+		}
+	}
+
+	if offInCols < len(e.cols)-1 {
+		copy(e.cols[offInCols:len(e.cols)-1], e.cols[offInCols+1:])
+	}
+	e.cols = e.cols[0 : len(e.cols)-1]
+
+	if ent.tp == String {
+		if ent.id != int32(len(e.idCols)-1) {
+			// non last columns
+			copy(e.idCols[ent.id:int32(len(e.idCols)-1)], e.idCols[ent.id+1:])
+		}
+		e.idCols = e.idCols[0 : len(e.idCols)-1]
+	} else if ent.tp == Float32 {
+		if ent.id != int32(len(e.valCols)-1) {
+			// non last columns
+			copy(e.valCols[ent.id:int32(len(e.valCols)-1)], e.valCols[ent.id+1:])
+		}
+		e.valCols = e.valCols[0 : len(e.valCols)-1]
+	}
+
+	return
+}
+
 func (e *EditableDataFrame) SetId(rowId int32, col string, id string) (reterr error) {
 	ent, suc := e.colMap[col]
 	if !suc {

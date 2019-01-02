@@ -5,6 +5,8 @@ import (
 	"runtime/debug"
 	"sort"
 	"sync"
+	"syscall"
+	"unsafe"
 )
 
 const SortMax = 2048
@@ -240,5 +242,27 @@ func copyFloat32Slice(s []float32) (ret []float32) {
 func copyStringSlice(s []string) (ret []string) {
 	ret = make([]string, len(s))
 	copy(ret, s)
+	return
+}
+
+type winsize struct {
+	Row    uint16
+	Col    uint16
+	Xpixel uint16
+	Ypixel uint16
+}
+
+func getTermSize() (ret []int32) {
+	ws := &winsize{}
+	retCode, _, errno := syscall.Syscall(syscall.SYS_IOCTL,
+		uintptr(syscall.Stdin),
+		uintptr(syscall.TIOCGWINSZ),
+		uintptr(unsafe.Pointer(ws)))
+
+	if int(retCode) == -1 {
+		panic(errno)
+	}
+
+	ret[0], ret[1] = int32(ws.Row), int32(ws.Col)
 	return
 }

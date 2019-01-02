@@ -12,6 +12,7 @@ import (
 )
 
 const (
+	Droped  = -2
 	Unknown = -1
 	String  = iota
 	Float32
