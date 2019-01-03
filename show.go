@@ -50,7 +50,7 @@ func (d *DataFrame) Show() {
 	}
 	rightEndBeg++
 
-	//log.Printf("leftEnd = %d, rightEnd = %d", leftEndCol, rightEndBeg)
+	fmt.Fprintf(os.Stderr, "leftEnd = %d, rightEnd = %d", leftEndCol, rightEndBeg)
 	if leftEndCol < rightEndBeg {
 		left := rawMtx[0:leftEndCol]
 		right := rawMtx[rightEndBeg:]
@@ -62,8 +62,8 @@ func (d *DataFrame) Show() {
 		widths = append(leftWidth, rightWidth...)
 	}
 
-	//log.Printf("size of mtx = %d, size of width = %d", len(rawMtx), len(widths))
-	//log.Printf("size of mtx[0] = %d, mtx[1] = %d", len(rawMtx[0]), len(rawMtx[1]))
+	fmt.Fprintf(os.Stderr, "size of mtx = %d, size of width = %d", len(rawMtx), len(widths))
+	fmt.Fprintf(os.Stderr, "size of mtx[0] = %d, mtx[1] = %d", len(rawMtx[0]), len(rawMtx[1]))
 
 	lineBuf := make([]string, len(rawMtx))
 	for i := 0; i < len(rawMtx[0]); i++ {
