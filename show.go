@@ -3,6 +3,7 @@ package gframe
 import (
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -14,9 +15,10 @@ func (d *DataFrame) Show() {
 		termSize = [2]int32{300, 20}
 	}
 
-	log.Printf("term_size=%v", termSize)
+	//log.Printf("term_size=%v", termSize)
+	fmt.Fprintf(os.Stderr, "term_size=%v", termSize)
 	leakSizeY, leakSizeX := calcLeakSize(termSize)
-	log.Printf("leak_size=[%d, %d]", leakSizeY, leakSizeX)
+	fmt.Fprintf(os.Stderr, "leak_size=[%d, %d]", leakSizeY, leakSizeX)
 
 	widths := make([]int32, len(d.cols)+1)
 	rawMtx := make([][]string, len(d.cols)+1)

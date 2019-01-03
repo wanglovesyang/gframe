@@ -278,7 +278,7 @@ func GetTermSize() (ret [2]int32, reterr error) {
 		}
 
 		if ret[1] < MinWidth {
-			ret[0] = MinWidth
+			ret[1] = MinWidth
 		}
 	}()
 
