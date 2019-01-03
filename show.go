@@ -101,17 +101,17 @@ func (d *DataFrame) mockIdColumns(leakSize int32) (ret []string) {
 		ret = make([]string, d.shape[0]+1)
 		ret[0] = ""
 		for i := 0; i < d.shape[0]; i++ {
-			ret[i+1] = strconv.FormatInt(int64(i), 32)
+			ret[i+1] = strconv.FormatInt(int64(i), 10)
 		}
 	} else {
 		ret = make([]string, 2*leakSize+2)
 		ret[0] = ""
 		for i := 0; i < int(leakSize); i++ {
-			ret[i+1] = strconv.FormatInt(int64(i), 32)
+			ret[i+1] = strconv.FormatInt(int64(i), 10)
 		}
 		ret[leakSize+1] = "..."
 		for i := 0; i < int(leakSize); i++ {
-			ret[len(ret)-1-i] = strconv.FormatInt(int64(d.shape[0]-i-1), 32)
+			ret[len(ret)-1-i] = strconv.FormatInt(int64(d.shape[0]-i-1), 10)
 		}
 	}
 
