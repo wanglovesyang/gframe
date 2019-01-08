@@ -11,7 +11,7 @@ func (d *DataFrame) Show() {
 	termSize, err := GetTermSize()
 	if err != nil {
 		log.Printf("fail to get term size, %v", err)
-		termSize = [2]int32{50, 300}
+		termSize = [2]int32{30, 80}
 	}
 
 	//log.Printf("term_size=%v", termSize)
