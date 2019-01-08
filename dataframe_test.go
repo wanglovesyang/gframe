@@ -39,12 +39,9 @@ func TestDataFrame_addColumn_if_duplicate_then_panic(t *testing.T) {
 	)
 
 	func() {
-		defer func() {
-			if err := recover(); err == nil {
-				t.Fatalf("adding duplicate column does not case any error panic")
-			}
-		}()
-		d.addColumn("a", true, true)
+		if _, err := d.addColumn("a", true, true); err == nil {
+			t.Errorf("nil err when adding duplcated columns")
+		}
 	}()
 }
 

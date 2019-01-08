@@ -15,8 +15,7 @@ func TestCalculate_if_source_missing_columns_then_error(t *testing.T) {
 		},
 	)
 
-	edt := df.Edit()
-	if err := edt.Calculate([]string{"j"}, []string{"s"}, nil); err == nil {
+	if err := df.Calculate([]string{"j"}, []string{"s"}, nil); err == nil {
 		t.Errorf("nil error upon magic column input")
 	}
 }
@@ -31,18 +30,16 @@ func TestCalculate_if_function_type_incorrect_then_error(t *testing.T) {
 		},
 	)
 
-	edt := df.Edit()
-
 	f1 := func(b, c float32) float32 {
 		log.Printf("%f + %f = %f", b, c, b+c)
 		return b + c
 	}
 
-	if err := edt.Calculate([]string{"a", "b"}, []string{"c"}, f1); err == nil {
+	if err := df.Calculate([]string{"a", "b"}, []string{"c"}, f1); err == nil {
 		t.Errorf("nil error when function argument are disaligned with columns")
 	}
 
-	if err := edt.Calculate([]string{"c", "b"}, []string{"a"}, f1); err == nil {
+	if err := df.Calculate([]string{"c", "b"}, []string{"a"}, f1); err == nil {
 		t.Errorf("nil error when function ouput are disaligned with columns")
 	}
 }
@@ -57,14 +54,12 @@ func TestCalculate_consistency(t *testing.T) {
 		},
 	)
 
-	edt := df.Edit()
-
 	f1 := func(b, c float32) float32 {
 		//log.Printf("%f + %f = %f", b, c, b+c)
 		return b + c
 	}
 
-	if err := edt.Calculate([]string{"c", "b"}, []string{"d"}, f1); err != nil {
+	if err := df.Calculate([]string{"c", "b"}, []string{"d"}, f1); err != nil {
 		t.Errorf("Error in calculating, %v", err)
 	}
 
@@ -72,11 +67,11 @@ func TestCalculate_consistency(t *testing.T) {
 		16, 18, 20, 22, 24, 26, 28, 30,
 	}
 
-	if edt.shape[1] != 4 {
+	if df.shape[1] != 4 {
 		t.Errorf("invalid shape after calculation")
 	}
 
-	d, err := edt.GetValColumns("d")
+	d, err := df.GetValColumns("d")
 	if err != nil {
 		t.Errorf("new column does not show up")
 	}

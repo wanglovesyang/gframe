@@ -3,7 +3,6 @@ package gframe
 import (
 	"fmt"
 	"log"
-	"os"
 	"strconv"
 	"strings"
 )
@@ -16,9 +15,9 @@ func (d *DataFrame) Show() {
 	}
 
 	//log.Printf("term_size=%v", termSize)
-	fmt.Fprintf(os.Stderr, "term_size=%v", termSize)
+	//fmt.Fprintf(os.Stderr, "term_size=%v", termSize)
 	leakSizeY, leakSizeX := calcLeakSize(termSize)
-	fmt.Fprintf(os.Stderr, "leak_size=[%d, %d]", leakSizeY, leakSizeX)
+	//fmt.Fprintf(os.Stderr, "leak_size=[%d, %d]", leakSizeY, leakSizeX)
 
 	widths := make([]int32, len(d.cols)+1)
 	rawMtx := make([][]string, len(d.cols)+1)
@@ -50,7 +49,7 @@ func (d *DataFrame) Show() {
 	}
 	rightEndBeg++
 
-	fmt.Fprintf(os.Stderr, "leftEnd = %d, rightEnd = %d", leftEndCol, rightEndBeg)
+	//fmt.Fprintf(os.Stderr, "leftEnd = %d, rightEnd = %d", leftEndCol, rightEndBeg)
 	if leftEndCol < rightEndBeg {
 		left := rawMtx[0:leftEndCol]
 		right := rawMtx[rightEndBeg:]
@@ -62,8 +61,8 @@ func (d *DataFrame) Show() {
 		widths = append(leftWidth, rightWidth...)
 	}
 
-	fmt.Fprintf(os.Stderr, "size of mtx = %d, size of width = %d", len(rawMtx), len(widths))
-	fmt.Fprintf(os.Stderr, "size of mtx[0] = %d, mtx[1] = %d", len(rawMtx[0]), len(rawMtx[1]))
+	//fmt.Fprintf(os.Stderr, "size of mtx = %d, size of width = %d", len(rawMtx), len(widths))
+	//fmt.Fprintf(os.Stderr, "size of mtx[0] = %d, mtx[1] = %d", len(rawMtx[0]), len(rawMtx[1]))
 
 	lineBuf := make([]string, len(rawMtx))
 	for i := 0; i < len(rawMtx[0]); i++ {

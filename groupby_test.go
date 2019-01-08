@@ -131,7 +131,7 @@ func TestDataFrameGroupby_Rank_panic_if_id_column(t *testing.T) {
 	}()
 
 	g := comDF.GroupBy("a")
-	_ = g.Rank(false, []string{"a"}, "_rnk", false)
+	_ = g.Rank(false, []string{"a"}, "_rnk")
 }
 
 func TestDataFrameGroupby_Rank_consistency_check(t *testing.T) {
@@ -147,7 +147,7 @@ func TestDataFrameGroupby_Rank_consistency_check(t *testing.T) {
 	}
 
 	g := comDF.GroupBy("a")
-	rank := g.Rank(false, []string{"b", "c"}, "_rnk", false)
+	rank := g.Rank(false, []string{"b", "c"}, "_rnk")
 	if rank.shape[1] != 2 {
 		t.Errorf("inconsistent shape of rank result")
 	}
@@ -158,4 +158,52 @@ func TestDataFrameGroupby_Rank_consistency_check(t *testing.T) {
 			t.Errorf("inconsistent value of rank %d[%f/%f]", i, cmp[0][i], rankBGroudtruth[i])
 		}
 	}
+}
+
+func TestDataFrameWithGroupby_LeftMerge(t *testing.T) {
+	initOnceGroupBy.Do(initComDF)
+
+	right, _ := CreateByData(map[string]interface{}{
+		"a": []string{"g1", "g2", "g3"},
+		"c": []float32{1, 5, 7},
+		"d": []float32{10, 20, 30},
+	})
+
+	merged := comDF.LeftMerge(right, []string{"a"}, []string{"c", "d"}, "_a", true)
+	merged.Show()
+
+	right2, _ := CreateByData(map[string]interface{}{
+		"a": []string{"g1", "g2", "g3"},
+		"c": []float32{1, 5, 7},
+		"d": []float32{10, 20, 30},
+	})
+
+	merged2 := comDF.LeftMerge(right2, []string{"a"}, []string{"c", "d"}, "_a", false)
+	merged2.Show()
+
+	right3, _ := CreateByData(map[string]interface{}{
+		"a": []string{"g1", "g1", "g2", "g2", "g3", "g3"},
+		"c": []float32{1, 1, 5, 5, 7, 7},
+		"d": []float32{10, 20, 30, 40, 50, 60},
+	})
+
+	merged3 := comDF.LeftMerge(right3, []string{"a"}, []string{"c", "d"}, "_a", false)
+	merged3.Show()
+}
+
+func TestDataFrameWithGroupby_FindOrder(t *testing.T) {
+	tg, _ := CreateByData(map[string]interface{}{
+		"a": []string{"g1", "g2", "g3", "g1", "g2", "g3"},
+		"b": []float32{4.1, 2, 3, 4, 1, 10},
+		"c": []float32{15, 19, 17, 18, 16, 20},
+	})
+
+	gSettings.ThreadNum = 1
+	initOnceGroupBy.Do(initComDF)
+	order := comDF.GroupBy("a").FindOrder(tg.GroupBy("a"), []string{"b", "c"}, false, "_rnk", true)
+	if order == nil {
+		t.Fatalf("nil return of find order")
+	}
+
+	order.Show()
 }

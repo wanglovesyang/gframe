@@ -2,6 +2,7 @@ package gframe
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"sort"
 	"strings"
@@ -30,21 +31,25 @@ func (a *AugHistogram) build(ids []int32, col []float32, binSize int32) {
 	a.bins = make([][]int32, binSize)
 	a.min = min
 	a.max = max
-	max += 0.000001
+	max *= 1.1
 	a.binStride = (max - min) / float32(binSize)
 
 	for _, id := range ids {
 		l := a.locate(col[id])
+		if int(l) >= len(a.bins) {
+			log.Printf("Invalid l value, over bound, l = %d, val = %f, min = %f, max = %f", l, col[id], a.min, a.max)
+		}
 		a.bins[l] = append(a.bins[l], id)
 	}
 
-	a.integral = make([]int32, len(a.bins))
+	a.integral = make([]int32, len(a.bins)+1)
 	inte := int32(0)
 	for i, b := range a.bins {
 		a.integral[i] = inte
 		inte += int32(len(b))
 		sort.Slice(b, func(i, j int) bool { return col[b[i]] < col[b[j]] })
 	}
+	a.integral[len(a.bins)] = inte
 
 	return
 }
@@ -215,7 +220,7 @@ func (d *DataFrameWithGroupBy) buildHistogram(cols []string) (reterr error) {
 	nThread := gSettings.ThreadNum
 	Parallel(int(nThread), func(id int) {
 		for i := id; i < len(d.groups); i += int(nThread) {
-			d.groups[i].buildHistogram(colVals, gSettings.ThreadNum)
+			d.groups[i].buildHistogram(colVals, gSettings.HistogramBins)
 		}
 	})
 
@@ -405,7 +410,7 @@ func (d *DataFrameWithGroupBy) ApplyEachGroup(ops map[string]interface{}) (ret *
 	return
 }
 
-func (d *DataFrameWithGroupBy) Rank(pct bool, cols []string, suffix string, inplace bool) (ret *DataFrame) {
+func (d *DataFrameWithGroupBy) Rank(pct bool, cols []string, suffix string) (ret *DataFrame) {
 	histIds := make([]int32, len(cols))
 	for i, c := range cols {
 		cl, suc := d.histCols[c]
@@ -430,20 +435,20 @@ func (d *DataFrameWithGroupBy) Rank(pct bool, cols []string, suffix string, inpl
 		}
 	})
 
-	var edt *EditableDataFrame
-	if inplace {
-		edt = d.Edit()
-	} else {
-		edt = Empty()
-	}
-
+	ret = Empty()
 	for i, c := range cols {
-		edt.PasteValColumn(c+suffix, rankCols[i])
+		ret.PasteValColumn(c+suffix, rankCols[i])
 	}
 
-	ret = &DataFrame{}
-	*ret = edt.DataFrame
 	return
+}
+
+type mappedEntry struct {
+	ColEntry
+	srcIDLeft   int32
+	srcIDRight  int32
+	histIDLeft  int32
+	histIDRight int32
 }
 
 func (d *DataFrameWithGroupBy) LeftMerge(t *DataFrameWithGroupBy, suffix string, firstMatchOnly bool) (ret *DataFrame) {
@@ -464,7 +469,7 @@ func (d *DataFrameWithGroupBy) LeftMerge(t *DataFrameWithGroupBy, suffix string,
 		for k, g := range d.groupMap {
 			if tg, suc := t.groupMap[k]; suc {
 				groupOffset[k] = offset
-				offset += int32(len(g.ids) + len(tg.ids))
+				offset += int32(len(g.ids) * len(tg.ids))
 				availableKeys = append(availableKeys, k)
 			}
 		}
@@ -472,9 +477,18 @@ func (d *DataFrameWithGroupBy) LeftMerge(t *DataFrameWithGroupBy, suffix string,
 		nh = int(offset)
 	}
 
-	nCols := make(map[string]int)
+	ret = &DataFrame{}
+	ret.reset()
+	var mergeMapper []mappedEntry
 	for _, col := range d.cols {
-		nCols[col.Name] = int(col.tp)
+		ent, _ := ret.addColumn(col.Name, col.tp == String, false)
+		mp := mappedEntry{
+			ColEntry:   ent,
+			srcIDLeft:  col.id,
+			srcIDRight: -1,
+		}
+
+		mergeMapper = append(mergeMapper, mp)
 	}
 
 	for _, col := range t.cols {
@@ -482,74 +496,174 @@ func (d *DataFrameWithGroupBy) LeftMerge(t *DataFrameWithGroupBy, suffix string,
 			continue
 		}
 
-		if _, suc := nCols[col.Name]; suc {
-			nCols[col.Name+suffix] = int(col.tp)
-		} else {
-			nCols[col.Name] = int(col.tp)
+		var ent ColEntry
+		var err error
+		if ent, err = ret.addColumn(col.Name, col.tp == String, false); err != nil {
+			ent, _ = ret.addColumn(col.Name+suffix, col.tp == String, false)
 		}
+
+		mp := mappedEntry{
+			ColEntry:   ent,
+			srcIDLeft:  -1,
+			srcIDRight: col.id,
+		}
+
+		mergeMapper = append(mergeMapper, mp)
+	}
+
+	ret.alloc(nh)
+	Parallel(int(gSettings.ThreadNum), func(id int) {
+		for i := id; i < len(d.groups); i += int(gSettings.ThreadNum) {
+			gd := d.groups[i]
+			k := gd.getKeyStr()
+			gt, suc := t.groupMap[k]
+			if !suc {
+				continue
+			}
+
+			var idLeft, idRight int32
+			var srid *int32
+			for _, col := range mergeMapper {
+				var src *DataFrameWithGroupBy
+				var scid int32
+				if col.srcIDLeft >= 0 {
+					src = d
+					scid = col.srcIDLeft
+					srid = &idLeft
+				} else {
+					src = t
+					scid = col.srcIDRight
+					srid = &idRight
+				}
+
+				var assign func(tid, sid int32)
+				if col.tp == String {
+					rsCol := ret.idCols[col.id]
+					sCol := src.idCols[scid]
+					assign = func(tid, sid int32) {
+						if len(rsCol) <= int(tid) {
+							log.Printf("len(rsCol) [%d] <= tid [%d]", len(rsCol), tid)
+						}
+
+						if len(sCol) <= int(sid) {
+							log.Printf("len(sCol) [%d] <= sid [%d]", len(sCol), sid)
+						}
+
+						rsCol[tid] = sCol[sid]
+					}
+				} else {
+					rsCol := ret.valCols[col.id]
+					sCol := src.valCols[scid]
+					assign = func(tid, sid int32) {
+						if len(rsCol) <= int(tid) {
+							log.Printf("len(rsCol) [%d] <= tid [%d]", len(rsCol), tid)
+						}
+
+						if len(sCol) <= int(sid) {
+							log.Printf("len(sCol) [%d] <= sid [%d]", len(sCol), sid)
+						}
+
+						rsCol[tid] = sCol[sid]
+					}
+				}
+
+				if firstMatchOnly {
+					idRight = gt.ids[0]
+					for _, idLeft = range gd.ids {
+						assign(idLeft, *srid)
+					}
+				} else {
+					offset := groupOffset[k]
+					for _, idLeft = range gd.ids {
+						for _, idRight = range gt.ids {
+							assign(offset, *srid)
+							offset++
+						}
+					}
+				}
+			}
+		}
+	})
+
+	return
+}
+
+func (d *DataFrameWithGroupBy) FindOrder(t *DataFrameWithGroupBy, cols []string, pct bool, suffix string, keepKeyCols bool) (ret *DataFrame) {
+	var reterr error
+	defer func() {
+		if reterr != nil {
+			panic(reterr)
+		}
+
+		if keepKeyCols && ret != nil {
+			ret = t.SelectByColumns(d.keyCols...).Copy(true).Concatenate(ret, false)
+		}
+	}()
+
+	if suc, missing := d.haveColumns(cols); !suc {
+		reterr = fmt.Errorf("columns %v are missing from left dataframe", missing)
+		return
+	}
+
+	if suc, missing := t.haveColumns(cols); !suc {
+		reterr = fmt.Errorf("columns %v are missing from right dataframe", missing)
+		return
+	}
+
+	if _, amb, bma := CompareStrList(d.keyCols, t.keyCols); len(amb) > 0 || len(bma) > 0 {
+		reterr = fmt.Errorf("cannot compare two group by with different keys")
+		return
 	}
 
 	ret = &DataFrame{}
-	ret.registerColumns(nCols)
-	ret.alloc(nh)
+	ret.reset()
+	var mapping []mappedEntry
+	for _, c := range cols {
+		entd := d.colMap[c]
+		entt := t.colMap[c]
+		hd := d.histCols[c]
 
-	var leftColMapping []mappedEntry
-	var rightColMapping []mappedEntry
+		if entt.tp == String {
+			reterr = fmt.Errorf("cannot find order for id column: %s", c)
+			return
+		}
 
-	for _, col := range d.cols {
-		ent := mappedEntry{ColEntry: ret.colMap[col.Name], srcID: col.id}
-		leftColMapping = append(leftColMapping, ent)
+		entr, err := ret.addColumn(c+suffix, entd.tp == String, false)
+		if err != nil {
+			panic(err)
+		}
+
+		mp := mappedEntry{
+			ColEntry:   entr,
+			srcIDLeft:  entd.id,
+			srcIDRight: entt.id,
+			histIDLeft: hd.id,
+		}
+
+		mapping = append(mapping, mp)
 	}
 
-	for _, col := range t.cols {
-		if _, suc := onSet[col.Name]; suc {
-			continue
-		}
-
-		if ent, suc := ret.colMap[col.Name+suffix]; suc {
-			ment := mappedEntry{ColEntry: ent, srcID: col.id}
-			rightColMapping = append(rightColMapping, ment)
-		} else if ent, suc := ret.colMap[col.Name]; suc {
-			ment := mappedEntry{ColEntry: ent, srcID: col.id}
-			rightColMapping = append(rightColMapping, ment)
-		}
-	}
-
-	merge := func(did, tid, rid int32) {
-		for _, lm := range leftColMapping {
-			if lm.tp == String {
-				ret.idCols[lm.id][rid] = d.idCols[lm.srcID][did]
-			} else if lm.tp == Float32 {
-				ret.valCols[lm.id][rid] = d.valCols[lm.srcID][did]
-			}
-		}
-
-		for _, rm := range rightColMapping {
-			if rm.tp == String {
-				ret.idCols[rm.id][rid] = d.idCols[rm.srcID][tid]
-			} else if rm.tp == Float32 {
-				ret.valCols[rm.id][rid] = d.valCols[rm.srcID][tid]
-			}
-		}
-	}
+	log.Printf("allocatingg with size %d", t.shape[0])
+	ret.alloc(t.shape[0])
 
 	Parallel(int(gSettings.ThreadNum), func(id int) {
-		for i := id; i < len(d.groups); i += int(gSettings.ThreadNum) {
-			s := d.groups[i]
-			k := s.getKeyStr()
-			t := t.groupMap[k]
-			if firstMatchOnly {
-				trid := t.ids[0]
-				for _, id := range s.ids {
-					merge(id, trid, id)
-				}
-			} else {
-				offset := groupOffset[k]
-				for _, did := range s.ids {
-					for _, tid := range t.ids {
-						merge(did, tid, offset)
-						offset++
+		for i := id; i < len(t.groups); i += int(gSettings.ThreadNum) {
+			tg := t.groups[i]
+			k := tg.getKeyStr()
+			dg, suc := d.groupMap[k]
+			if !suc {
+				continue
+			}
+
+			for _, rid := range tg.ids {
+				for _, mp := range mapping {
+					order := dg.hists[mp.histIDLeft].findOrder(t.valCols[mp.srcIDRight][rid], d.valCols[mp.srcIDLeft])
+					orderF := float32(order)
+					if pct {
+						orderF = 1 - orderF/float32(len(dg.ids)-1)
 					}
+
+					ret.valCols[mp.id][rid] = orderF
 				}
 			}
 		}

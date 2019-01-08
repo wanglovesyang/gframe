@@ -6,11 +6,7 @@ import (
 	"reflect"
 )
 
-type EditableDataFrame struct {
-	DataFrame
-}
-
-func (e *EditableDataFrame) DropColumn(col string) (reterr error) {
+func (e *DataFrame) DropColumnInplace(col string) (reterr error) {
 	ent, suc := e.colMap[col]
 	if !suc {
 		reterr = fmt.Errorf("column %s does not exist in dataframe", col)
@@ -50,7 +46,7 @@ func (e *EditableDataFrame) DropColumn(col string) (reterr error) {
 	return
 }
 
-func (e *EditableDataFrame) SetId(rowId int32, col string, id string) (reterr error) {
+func (e *DataFrame) SetId(rowId int32, col string, id string) (reterr error) {
 	ent, suc := e.colMap[col]
 	if !suc {
 		reterr = fmt.Errorf("column %s does not exist in dataframe", col)
@@ -71,7 +67,7 @@ func (e *EditableDataFrame) SetId(rowId int32, col string, id string) (reterr er
 	return
 }
 
-func (e *EditableDataFrame) SetValue(rowId int32, col string, val float32) (reterr error) {
+func (e *DataFrame) SetValue(rowId int32, col string, val float32) (reterr error) {
 	ent, suc := e.colMap[col]
 	if !suc {
 		reterr = fmt.Errorf("column %s does not exist in dataframe", col)
@@ -92,22 +88,24 @@ func (e *EditableDataFrame) SetValue(rowId int32, col string, val float32) (rete
 	return
 }
 
-func (e *EditableDataFrame) GetIdColumns(cols ...string) (ret [][]string, reterr error) {
+func (e *DataFrame) GetIdColumns(cols ...string) (ret [][]string, reterr error) {
 	return e.getIdCols(cols...)
 }
 
-func (e *EditableDataFrame) GetValColumns(cols ...string) (ret [][]float32, reterr error) {
+func (e *DataFrame) GetValColumns(cols ...string) (ret [][]float32, reterr error) {
 	return e.getValCols(cols...)
 }
 
-func (e *EditableDataFrame) PasteIdColumn(col string, ids []string) (reterr error) {
+func (e *DataFrame) PasteIdColumn(col string, ids []string) (reterr error) {
 	if len(ids) != e.shape[0] {
 		return fmt.Errorf("the size of provided column are not consistent with dataframe [%d / %d]", int32(len(ids)), e.shape[0])
 	}
 
 	ent, suc := e.colMap[col]
 	if !suc {
-		ent = e.addColumn(col, true, false)
+		if ent, reterr = e.addColumn(col, true, false); reterr != nil {
+			return
+		}
 	}
 
 	if ent.tp != String {
@@ -119,7 +117,7 @@ func (e *EditableDataFrame) PasteIdColumn(col string, ids []string) (reterr erro
 	return
 }
 
-func (e *EditableDataFrame) PasteValColumn(col string, vals []float32) (reterr error) {
+func (e *DataFrame) PasteValColumn(col string, vals []float32) (reterr error) {
 	if !e.Empty() {
 		if len(vals) != e.shape[0] {
 			return fmt.Errorf("the size of provided column are not consistent with dataframe [%d / %d]", len(vals), e.shape[0])
@@ -130,7 +128,9 @@ func (e *EditableDataFrame) PasteValColumn(col string, vals []float32) (reterr e
 
 	ent, suc := e.colMap[col]
 	if !suc {
-		ent = e.addColumn(col, false, false)
+		if ent, reterr = e.addColumn(col, false, false); reterr != nil {
+			return
+		}
 	}
 
 	if ent.tp != Float32 {
@@ -143,7 +143,7 @@ func (e *EditableDataFrame) PasteValColumn(col string, vals []float32) (reterr e
 	return
 }
 
-func (e *EditableDataFrame) makeArgList(cols []ColEntry, rowId int32) (ret []reflect.Value) {
+func (e *DataFrame) makeArgList(cols []ColEntry, rowId int32) (ret []reflect.Value) {
 	ret = make([]reflect.Value, len(cols))
 	for i, col := range cols {
 		if col.tp == String {
@@ -156,7 +156,7 @@ func (e *EditableDataFrame) makeArgList(cols []ColEntry, rowId int32) (ret []ref
 	return
 }
 
-func (e *EditableDataFrame) fillCalculateResult(cols []ColEntry, res []reflect.Value, rowId int32) {
+func (e *DataFrame) fillCalculateResult(cols []ColEntry, res []reflect.Value, rowId int32) {
 	for i, col := range cols {
 		if col.tp == String {
 			e.idCols[col.id][rowId] = res[i].String()
@@ -166,7 +166,7 @@ func (e *EditableDataFrame) fillCalculateResult(cols []ColEntry, res []reflect.V
 	}
 }
 
-func (e *EditableDataFrame) Calculate(argCols, retCols []string, fc interface{}) (reterr error) {
+func (e *DataFrame) Calculate(argCols, retCols []string, fc interface{}) (reterr error) {
 	argColsE := make([]ColEntry, len(argCols))
 	for i, col := range argCols {
 		if ent, suc := e.colMap[col]; !suc {
@@ -201,8 +201,11 @@ func (e *EditableDataFrame) Calculate(argCols, retCols []string, fc interface{})
 
 	for i, col := range retColsE {
 		if col.id < 0 {
-			ent := e.addColumn(col.Name, col.tp == String, true)
-			retColsE[i] = ent
+			if ent, err := e.addColumn(col.Name, col.tp == String, true); err != nil {
+				return err
+			} else {
+				retColsE[i] = ent
+			}
 		}
 	}
 
@@ -224,13 +227,26 @@ func (e *EditableDataFrame) Calculate(argCols, retCols []string, fc interface{})
 	return
 }
 
-func Empty() (ret *EditableDataFrame) {
-	ret = &EditableDataFrame{}
+func Empty() (ret *DataFrame) {
+	ret = &DataFrame{}
 	ret.reset()
 	return
 }
 
-func (e *EditableDataFrame) Concatenate(f *DataFrame, vertical bool) (reterr error) {
+func (e *DataFrame) Concatenate(f *DataFrame, vertical bool) (ret *DataFrame) {
+	var reterr error
+	defer func() {
+		if reterr != nil {
+			panic(reterr)
+		}
+	}()
+
+	ret = e.Copy(false)
+	reterr = ret.ConcatenateInplace(f, vertical)
+	return
+}
+
+func (e *DataFrame) ConcatenateInplace(f *DataFrame, vertical bool) (reterr error) {
 	if vertical {
 		return e.concatenateVertical(f)
 	}
@@ -238,7 +254,7 @@ func (e *EditableDataFrame) Concatenate(f *DataFrame, vertical bool) (reterr err
 	return e.concatenateHorizontal(f)
 }
 
-func (e *EditableDataFrame) concatenateVertical(f *DataFrame) (reterr error) {
+func (e *DataFrame) concatenateVertical(f *DataFrame) (reterr error) {
 	if !compareColumns(e.colMap, f.colMap) {
 		return fmt.Errorf("Cannot concatenate vertically when two dataframes are with different columns")
 	}
@@ -258,7 +274,7 @@ func (e *EditableDataFrame) concatenateVertical(f *DataFrame) (reterr error) {
 	return
 }
 
-func (e *EditableDataFrame) concatenateHorizontal(f *DataFrame) (reterr error) {
+func (e *DataFrame) concatenateHorizontal(f *DataFrame) (reterr error) {
 	if f.shape[0] != e.shape[0] {
 		return fmt.Errorf("cannot concatenate horizontally when two data frame are ")
 	}
@@ -266,10 +282,14 @@ func (e *EditableDataFrame) concatenateHorizontal(f *DataFrame) (reterr error) {
 	for _, col := range f.cols {
 		if col.tp == String {
 			ss := copyStringSlice(f.idCols[col.id])
-			e.PasteIdColumn(col.Name, ss)
+			if reterr = e.PasteIdColumn(col.Name, ss); reterr != nil {
+				return
+			}
 		} else if col.tp == Float32 {
 			ss := copyFloat32Slice(f.valCols[col.id])
-			e.PasteValColumn(col.Name, ss)
+			if reterr = e.PasteValColumn(col.Name, ss); reterr != nil {
+				return
+			}
 		}
 	}
 

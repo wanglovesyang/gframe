@@ -51,21 +51,23 @@ func (d *DataFrame) createWithData(data map[string]interface{}) (reterr error) {
 	for k, v := range data {
 		switch vv := v.(type) {
 		case []float32:
-			ent := d.addColumn(k, false, false)
-			if len(vv) != lastLen && lastLen >= 0 {
+			if ent, err := d.addColumn(k, false, false); err != nil {
+				return err
+			} else if len(vv) != lastLen && lastLen >= 0 {
 				return fmt.Errorf("size of column %s is not aligned", k)
+			} else {
+				d.valCols[ent.id] = vv
+				lastLen = len(vv)
 			}
-
-			d.valCols[ent.id] = vv
-			lastLen = len(vv)
 		case []string:
-			ent := d.addColumn(k, true, false)
-			if len(vv) != lastLen && lastLen >= 0 {
+			if ent, err := d.addColumn(k, true, false); err != nil {
+				return err
+			} else if len(vv) != lastLen && lastLen >= 0 {
 				return fmt.Errorf("size of column %s is not aligned", k)
+			} else {
+				d.idCols[ent.id] = vv
+				lastLen = len(vv)
 			}
-
-			d.idCols[ent.id] = vv
-			lastLen = len(vv)
 		default:
 			return fmt.Errorf("invalid format of data are commited")
 		}
@@ -103,9 +105,9 @@ func (d *DataFrame) registerColumns(types map[string]int) {
 	d.shape[1] = len(d.cols)
 }
 
-func (d *DataFrame) addColumn(name string, id, alloc bool) (ret ColEntry) {
+func (d *DataFrame) addColumn(name string, id, alloc bool) (ret ColEntry, reterr error) {
 	if _, suc := d.colMap[name]; suc {
-		panic(fmt.Errorf("column %s already exists in dataframe", name))
+		reterr = fmt.Errorf("column %s already exists in dataframe", name)
 	}
 
 	ret.Name = name
@@ -143,6 +145,17 @@ func (d *DataFrame) Columns() (ret []string) {
 		ret[i] = k.Name
 	}
 
+	return
+}
+
+func (d *DataFrame) haveColumns(cols []string) (ret bool, missed []string) {
+	for _, col := range cols {
+		if _, suc := d.colMap[col]; !suc {
+			missed = append(missed, col)
+		}
+	}
+
+	ret = len(missed) == 0
 	return
 }
 
@@ -492,10 +505,6 @@ func (d *DataFrame) GroupBy(cols ...string) (ret *DataFrameWithGroupBy) {
 	return
 }
 
-func (d *DataFrame) Edit() (ret *EditableDataFrame) {
-	return &EditableDataFrame{DataFrame: *d}
-}
-
 func (d *DataFrame) applyOnColumn(col []float32, op interface{}) (ret float32) {
 	switch p := op.(type) {
 	case BinaryOP:
@@ -549,11 +558,6 @@ func (d *DataFrame) Empty() bool {
 	return len(d.cols) == 0
 }
 
-type mappedEntry struct {
-	ColEntry
-	srcID int32
-}
-
 func (d *DataFrame) LeftMerge(t *DataFrame, on []string, tcols []string, suffix string, firstMatchOnly bool) (ret *DataFrame) {
 	gd := d.GroupBy(on...)
 	if len(tcols) > 0 {
@@ -594,8 +598,48 @@ func ReadCSV(path string) (ret *DataFrame, reterr error) {
 	return
 }
 
-func CreateByData(data map[string]interface{}) (ret *DataFrame) {
+func CreateByData(data map[string]interface{}) (ret *DataFrame, reterr error) {
 	ret = &DataFrame{}
-	ret.createWithData(data)
+	if reterr = ret.createWithData(data); reterr != nil {
+		ret = nil
+	}
+	return
+}
+
+func (d *DataFrame) Copy(copyData bool) (ret *DataFrame) {
+	ret = &DataFrame{}
+	ret.colMap = make(map[string]ColEntry)
+	for k, v := range d.colMap {
+		ret.colMap[k] = v
+	}
+
+	ret.cols = make([]ColEntry, len(d.cols))
+	copy(ret.cols, d.cols)
+
+	ret.idCols = make([][]string, len(d.idCols))
+	ret.valCols = make([][]float32, len(d.valCols))
+	ret.shape = d.shape
+
+	if copyData {
+		ret.alloc(ret.shape[0])
+
+		for i := range d.idCols {
+			copy(ret.idCols[i], d.idCols[i])
+		}
+
+		for i := range d.valCols {
+			copy(ret.valCols[i], d.valCols[i])
+		}
+	} else {
+		ret.shape = d.shape
+		for i := range d.idCols {
+			ret.idCols[i] = d.idCols[i]
+		}
+
+		for i := range d.valCols {
+			ret.valCols[i] = d.valCols[i]
+		}
+	}
+
 	return
 }
