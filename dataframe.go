@@ -278,7 +278,7 @@ func (d *DataFrame) loadCSV(path string, smartCols bool) (reterr error) {
 	}
 
 	log.Printf("totally %d samples", lineCount)
-	d.alloc(lineCount)
+	d.alloc(lineCount - 1)
 
 	if _, reterr = f.Seek(0, 0); reterr != nil {
 		return
@@ -307,7 +307,7 @@ func (d *DataFrame) loadCSV(path string, smartCols bool) (reterr error) {
 
 		line := scanner.Text()
 		eles := strings.Split(line, ",")
-		if len(eles) == 0 {
+		if len(eles) < d.shape[1] {
 			continue
 		}
 
@@ -640,6 +640,35 @@ func (d *DataFrame) Copy(copyData bool) (ret *DataFrame) {
 		for i := range d.valCols {
 			ret.valCols[i] = d.valCols[i]
 		}
+	}
+
+	return
+}
+
+func (d *DataFrame) FillNaN(val float32) {
+	for _, col := range d.valCols {
+		for i, v := range col {
+			if math.IsNaN(float64(v)) {
+				col[i] = val
+			}
+		}
+	}
+}
+
+func countNan(col []float32) (ret int32) {
+	for _, v := range col {
+		if math.IsNaN(float64(v)) {
+			ret++
+		}
+	}
+
+	return
+}
+
+func (d *DataFrame) CountNaN() (ret map[string]int32) {
+	ret = make(map[string]int32)
+	for _, col := range d.cols {
+		ret[col.Name] = countNan(d.valCols[col.id])
 	}
 
 	return
