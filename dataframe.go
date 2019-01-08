@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -318,7 +319,7 @@ func (d *DataFrame) loadCSV(path string, smartCols bool) (reterr error) {
 			case Float32:
 				var val float64
 				if val, reterr = strconv.ParseFloat(v, 32); reterr != nil {
-					return
+					val = math.NaN()
 				}
 
 				d.valCols[id][off] = float32(val)
