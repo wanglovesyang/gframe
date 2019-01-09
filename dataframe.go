@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -429,6 +430,13 @@ func (d *DataFrame) SelectByRows(rows ...int32) (ret *DataFrame) {
 }
 
 func (d *DataFrame) SelectRange(beg, end int32) (ret *DataFrame, reterr error) {
+	defer func() {
+		if err := recover(); err != nil {
+			stack := debug.Stack()
+			reterr = fmt.Errorf("Error panics: %v, stack = %s", err, stack)
+		}
+	}()
+
 	if beg < 0 {
 		reterr = fmt.Errorf("param beg is less than 0")
 		return

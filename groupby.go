@@ -226,7 +226,7 @@ func (d *DataFrameWithGroupBy) buildFromDF(df *DataFrame, keyCols []string) (ret
 	}
 
 	tStartHist := time.Now()
-	d.buildHistogram(d.getValueColumnNames())
+	reterr = d.buildHistogram(d.getValueColumnNames())
 	tEndHist := time.Now()
 	if gSettings.Profiling {
 		Log("Cost of building histogram: %fms", tEndHist.Sub(tStartHist).Seconds()*1000)

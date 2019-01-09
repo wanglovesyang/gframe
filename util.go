@@ -310,5 +310,5 @@ func GetTermSize() (ret [2]int32, reterr error) {
 }
 
 func Log(f string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, f, args...)
+	fmt.Fprintf(os.Stderr, f+"\n", args...)
 }
