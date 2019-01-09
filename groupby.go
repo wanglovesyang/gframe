@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	mm "github.com/spaolacci/murmur3"
 )
 
 type AugHistogram struct {
@@ -166,6 +168,101 @@ func (d *DataFrameWithGroupBy) getKeyIDTuples(keyCols []string) (ret []KeyID, re
 			Key: key,
 			ID:  int32(i),
 		})
+	}
+
+	return
+}
+
+func (d *DataFrameWithGroupBy) buildFromDFImpl2(df *DataFrame, keyCols []string) (reterr error) {
+	defer func() {
+		if err := recover(); err != nil {
+			stack := debug.Stack()
+			panic(fmt.Errorf("Error panics: %v, stack = %s", err, stack))
+		}
+	}()
+
+	if gSettings.Profiling {
+		tStart := time.Now()
+		defer func() {
+			tEnd := time.Now()
+			Log("Cost of building groups from dataframe: %fms", tEnd.Sub(tStart).Seconds()*1000)
+		}()
+	}
+
+	tStartMR := time.Now()
+
+	// shuffers
+	nThread := int(gSettings.ThreadNum)
+	shufflers := make([]chan KeyID, nThread)
+	for i := 0; i < nThread; i++ {
+		shufflers[i] = make(chan KeyID, 1000)
+	}
+
+	// GenKeyTuples
+	go func() {
+		Parallel(nThread, func(id int) {
+			buf := make([]string, len(keyCols))
+			for i := id; i < d.shape[0]; i += int(nThread) {
+				key := strings.Join(buf, IDMergeDelim)
+				tid := int(mm.Sum32([]byte(key))) % nThread
+				shufflers[tid] <- KeyID{key, int32(i)}
+			}
+		})
+
+		for i := 0; i < nThread; i++ {
+			close(shufflers[i])
+		}
+	}()
+
+	groupCollection := make([]map[string]*GroupEntry, nThread)
+	Parallel(nThread, func(id int) {
+		groups := make(map[string]*GroupEntry)
+		groupCollection[id] = groups
+		for v := range shufflers[id] {
+			var g *GroupEntry
+			if gg, suc := groups[v.Key]; !suc {
+				g = &GroupEntry{}
+			} else {
+				g = gg
+			}
+			if g.keys == nil {
+				g.keys = strings.Split(v.Key, IDMergeDelim)
+			}
+
+			g.ids = append(g.ids, v.ID)
+			groups[v.Key] = g
+		}
+	})
+
+	tEndMR := time.Now()
+	if gSettings.Profiling {
+		Log("Cost of map reduce: %fms", tEndMR.Sub(tStartMR).Seconds()*1000)
+	}
+
+	tStartMerge := time.Now()
+	amt := 0
+	for _, gp := range groupCollection {
+		amt += len(gp)
+	}
+
+	d.groups = make([]*GroupEntry, 0, amt)
+	d.groupMap = make(map[string]*GroupEntry)
+	for _, gp := range groupCollection {
+		for k, v := range gp {
+			d.groupMap[k] = v
+			d.groups = append(d.groups, v)
+		}
+	}
+	tEndMerge := time.Now()
+	if gSettings.Profiling {
+		Log("Cost of merging groups: %fms", tEndMerge.Sub(tStartMerge).Seconds()*1000)
+	}
+
+	tStartHist := time.Now()
+	reterr = d.buildHistogram(d.getValueColumnNames())
+	tEndHist := time.Now()
+	if gSettings.Profiling {
+		Log("Cost of building histogram: %fms", tEndHist.Sub(tStartHist).Seconds()*1000)
 	}
 
 	return
