@@ -308,3 +308,7 @@ func GetTermSize() (ret [2]int32, reterr error) {
 	reterr = fmt.Errorf("System call failed with max try")
 	return
 }
+
+func Log(f string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, f, args...)
+}

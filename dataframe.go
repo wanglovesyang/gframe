@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"os"
 	"strconv"
@@ -278,7 +277,7 @@ func (d *DataFrame) loadCSV(path string, smartCols bool) (reterr error) {
 		return
 	}
 
-	log.Printf("totally %d samples", lineCount)
+	Log("totally %d samples", lineCount)
 	d.alloc(lineCount - 1)
 
 	if _, reterr = f.Seek(0, 0); reterr != nil {
@@ -502,7 +501,7 @@ func (d *DataFrame) GroupBy(cols ...string) (ret *DataFrameWithGroupBy) {
 	ret = &DataFrameWithGroupBy{}
 	if err := ret.buildFromDF(d, cols); err != nil {
 		ret = nil
-		log.Printf("Error: %v", err)
+		Log("Error: %v", err)
 	}
 	return
 }
@@ -527,7 +526,7 @@ func (d *DataFrame) Apply(ops map[string]interface{}) (ret map[string]float32) {
 		tStart := time.Now()
 		defer func() {
 			tEnd := time.Now()
-			log.Printf("Cost of applying on columns: %fms", tEnd.Sub(tStart).Seconds()*1000)
+			Log("Cost of applying on columns: %fms", tEnd.Sub(tStart).Seconds()*1000)
 		}()
 	}
 
@@ -621,7 +620,7 @@ func (d *DataFrame) Copy(copyData bool) (ret *DataFrame) {
 		tStart := time.Now()
 		defer func() {
 			tEnd := time.Now()
-			log.Printf("Cost of copying: %fms", tEnd.Sub(tStart).Seconds()*1000)
+			Log("Cost of copying: %fms", tEnd.Sub(tStart).Seconds()*1000)
 		}()
 	}
 

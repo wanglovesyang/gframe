@@ -1,7 +1,6 @@
 package gframe
 
 import (
-	"log"
 	"testing"
 )
 
@@ -31,7 +30,7 @@ func TestCalculate_if_function_type_incorrect_then_error(t *testing.T) {
 	)
 
 	f1 := func(b, c float32) float32 {
-		log.Printf("%f + %f = %f", b, c, b+c)
+		Log("%f + %f = %f", b, c, b+c)
 		return b + c
 	}
 
@@ -55,7 +54,7 @@ func TestCalculate_consistency(t *testing.T) {
 	)
 
 	f1 := func(b, c float32) float32 {
-		//log.Printf("%f + %f = %f", b, c, b+c)
+		//Log("%f + %f = %f", b, c, b+c)
 		return b + c
 	}
 

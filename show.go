@@ -2,7 +2,6 @@ package gframe
 
 import (
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 )
@@ -10,11 +9,11 @@ import (
 func (d *DataFrame) Show() {
 	termSize, err := GetTermSize()
 	if err != nil {
-		log.Printf("fail to get term size, %v", err)
-		termSize = [2]int32{30, 140}
+		Log("fail to get term size, %v", err)
+		termSize = [2]int32{30, 130}
 	}
 
-	//log.Printf("term_size=%v", termSize)
+	//Log("term_size=%v", termSize)
 	//fmt.Fprintf(os.Stderr, "term_size=%v", termSize)
 	leakSizeY, leakSizeX := calcLeakSize(termSize)
 	//fmt.Fprintf(os.Stderr, "leak_size=[%d, %d]", leakSizeY, leakSizeX)

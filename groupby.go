@@ -2,7 +2,6 @@ package gframe
 
 import (
 	"fmt"
-	"log"
 	"math"
 	"sort"
 	"strings"
@@ -38,7 +37,7 @@ func (a *AugHistogram) build(ids []int32, col []float32, binSize int32) {
 	for _, id := range ids {
 		l := a.locate(col[id])
 		if int(l) >= len(a.bins) {
-			log.Printf("Invalid l value, over bound, l = %d, val = %f, min = %f, max = %f", l, col[id], a.min, a.max)
+			Log("Invalid l value, over bound, l = %d, val = %f, min = %f, max = %f", l, col[id], a.min, a.max)
 		}
 		a.bins[l] = append(a.bins[l], id)
 	}
@@ -172,7 +171,7 @@ func (d *DataFrameWithGroupBy) buildFromDF(df *DataFrame, keyCols []string) (ret
 		tStart := time.Now()
 		defer func() {
 			tEnd := time.Now()
-			log.Printf("Cost of building groups from dataframe: %fms", tEnd.Sub(tStart).Seconds()*1000)
+			Log("Cost of building groups from dataframe: %fms", tEnd.Sub(tStart).Seconds()*1000)
 		}()
 	}
 
@@ -189,7 +188,7 @@ func (d *DataFrameWithGroupBy) buildFromDF(df *DataFrame, keyCols []string) (ret
 	ParallelSort(kids)
 	tEndSort := time.Now()
 	if gSettings.Profiling {
-		log.Printf("Cost of parallel sorting in building groups: %fms", tEndSort.Sub(tStartSort).Seconds()*1000)
+		Log("Cost of parallel sorting in building groups: %fms", tEndSort.Sub(tStartSort).Seconds()*1000)
 	}
 
 	tStartBuild := time.Now()
@@ -223,14 +222,14 @@ func (d *DataFrameWithGroupBy) buildFromDF(df *DataFrame, keyCols []string) (ret
 
 	tEndBuild := time.Now()
 	if gSettings.Profiling {
-		log.Printf("Cost of building groups struct: %fms", tEndBuild.Sub(tStartBuild).Seconds()*1000)
+		Log("Cost of building groups struct: %fms", tEndBuild.Sub(tStartBuild).Seconds()*1000)
 	}
 
 	tStartHist := time.Now()
 	d.buildHistogram(d.getValueColumnNames())
 	tEndHist := time.Now()
 	if gSettings.Profiling {
-		log.Printf("Cost of building histogram: %fms", tEndHist.Sub(tStartHist).Seconds()*1000)
+		Log("Cost of building histogram: %fms", tEndHist.Sub(tStartHist).Seconds()*1000)
 	}
 
 	return
@@ -441,7 +440,7 @@ func (d *DataFrameWithGroupBy) Rank(pct bool, cols []string, suffix string) (ret
 		tStart := time.Now()
 		defer func() {
 			tEnd := time.Now()
-			log.Printf("Cost of ranking: %fms", tEnd.Sub(tStart).Seconds()*1000)
+			Log("Cost of ranking: %fms", tEnd.Sub(tStart).Seconds()*1000)
 		}()
 	}
 
@@ -490,7 +489,7 @@ func (d *DataFrameWithGroupBy) LeftMerge(t *DataFrameWithGroupBy, suffix string,
 		tStart := time.Now()
 		defer func() {
 			tEnd := time.Now()
-			log.Printf("Cost of merge: %fms", tEnd.Sub(tStart).Seconds()*1000)
+			Log("Cost of merge: %fms", tEnd.Sub(tStart).Seconds()*1000)
 		}()
 	}
 
@@ -584,11 +583,11 @@ func (d *DataFrameWithGroupBy) LeftMerge(t *DataFrameWithGroupBy, suffix string,
 					sCol := src.idCols[scid]
 					assign = func(tid, sid int32) {
 						if len(rsCol) <= int(tid) {
-							log.Printf("len(rsCol) [%d] <= tid [%d]", len(rsCol), tid)
+							Log("len(rsCol) [%d] <= tid [%d]", len(rsCol), tid)
 						}
 
 						if len(sCol) <= int(sid) {
-							log.Printf("len(sCol) [%d] <= sid [%d]", len(sCol), sid)
+							Log("len(sCol) [%d] <= sid [%d]", len(sCol), sid)
 						}
 
 						rsCol[tid] = sCol[sid]
@@ -598,11 +597,11 @@ func (d *DataFrameWithGroupBy) LeftMerge(t *DataFrameWithGroupBy, suffix string,
 					sCol := src.valCols[scid]
 					assign = func(tid, sid int32) {
 						if len(rsCol) <= int(tid) {
-							log.Printf("len(rsCol) [%d] <= tid [%d]", len(rsCol), tid)
+							Log("len(rsCol) [%d] <= tid [%d]", len(rsCol), tid)
 						}
 
 						if len(sCol) <= int(sid) {
-							log.Printf("len(sCol) [%d] <= sid [%d]", len(sCol), sid)
+							Log("len(sCol) [%d] <= sid [%d]", len(sCol), sid)
 						}
 
 						rsCol[tid] = sCol[sid]
@@ -635,7 +634,7 @@ func (d *DataFrameWithGroupBy) FindOrder(t *DataFrameWithGroupBy, cols []string,
 		tStart := time.Now()
 		defer func() {
 			tEnd := time.Now()
-			log.Printf("Cost of finding order: %fms", tEnd.Sub(tStart).Seconds()*1000)
+			Log("Cost of finding order: %fms", tEnd.Sub(tStart).Seconds()*1000)
 		}()
 	}
 
@@ -693,7 +692,7 @@ func (d *DataFrameWithGroupBy) FindOrder(t *DataFrameWithGroupBy, cols []string,
 		mapping = append(mapping, mp)
 	}
 
-	log.Printf("allocatingg with size %d", t.shape[0])
+	Log("allocatingg with size %d", t.shape[0])
 	ret.alloc(t.shape[0])
 
 	Parallel(int(gSettings.ThreadNum), func(id int) {

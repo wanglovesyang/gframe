@@ -2,7 +2,6 @@ package gframe
 
 import (
 	"fmt"
-	"log"
 	"reflect"
 	"time"
 )
@@ -172,7 +171,7 @@ func (e *DataFrame) Calculate(argCols, retCols []string, fc interface{}) (reterr
 		tStart := time.Now()
 		defer func() {
 			tEnd := time.Now()
-			log.Printf("Cost of column caculate: %fms", tEnd.Sub(tStart).Seconds()*1000)
+			Log("Cost of column caculate: %fms", tEnd.Sub(tStart).Seconds()*1000)
 		}()
 	}
 
@@ -225,7 +224,7 @@ func (e *DataFrame) Calculate(argCols, retCols []string, fc interface{}) (reterr
 			res := fcv.Call(vals)
 			if withErr {
 				lastErr := vals[len(vals)-1].Interface()
-				log.Printf("Error in calculating, %v", lastErr)
+				Log("Error in calculating, %v", lastErr)
 				reterr = lastErr.(error)
 			}
 
