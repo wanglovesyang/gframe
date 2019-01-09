@@ -37,6 +37,10 @@ func (a *AugHistogram) build(ids []int32, col []float32, binSize int32) {
 
 	for _, id := range ids {
 		l := a.locate(col[id])
+		if l < 0 {
+			l = 0
+		}
+
 		if int(l) >= len(a.bins) {
 			Log("Invalid l value, over bound, l = %d, val = %f, min = %f, max = %f", l, col[id], a.min, a.max)
 		}
@@ -257,7 +261,7 @@ func (d *DataFrameWithGroupBy) buildHistogram(cols []string) (reterr error) {
 				defer func() {
 					stack := debug.Stack()
 					if err := recover(); err != nil {
-						Log("Error panics in No.%d group stack = %s", i, stack)
+						Log("Error panics in No.%d group, err = %v, stack = %s", i, err, stack)
 					}
 				}()
 
