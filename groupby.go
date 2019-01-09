@@ -258,12 +258,12 @@ func (d *DataFrameWithGroupBy) buildHistogram(cols []string) (reterr error) {
 	Parallel(int(nThread), func(id int) {
 		for i := id; i < len(d.groups); i += int(nThread) {
 			func(i int) {
-				defer func() {
+				/*defer func() {
 					stack := debug.Stack()
 					if err := recover(); err != nil {
 						Log("Error panics in No.%d group, err = %v, stack = %s", i, err, stack)
 					}
-				}()
+				}()*/
 
 				d.groups[i].buildHistogram(colVals, gSettings.HistogramBins)
 			}(i)
