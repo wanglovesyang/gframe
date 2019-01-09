@@ -228,6 +228,7 @@ func (d *DataFrameWithGroupBy) buildFromDFImpl2(df *DataFrame, keyCols []string)
 				tid := int(mm.Sum32(key)) % nThread
 				shufflers[tid] <- KeyID{string(key), int32(i)}
 				atomic.AddInt32(&cntH, 1)
+				buf.Reset()
 			}
 		})
 
