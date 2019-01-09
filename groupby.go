@@ -212,6 +212,7 @@ func (d *DataFrameWithGroupBy) buildFromDFImpl2(df *DataFrame, keyCols []string)
 
 	// GenKeyTuples
 	go func() {
+		tMapStart := time.Now()
 		cntH := int32(0)
 		Parallel(nThread, true, func(id int) {
 			buf := make([]string, len(keyCols))
@@ -234,8 +235,14 @@ func (d *DataFrameWithGroupBy) buildFromDFImpl2(df *DataFrame, keyCols []string)
 		if gSettings.Debug {
 			Log("totally %d rows mapped", cntH)
 		}
+
+		tMapEnd := time.Now()
+		if gSettings.Profiling {
+			Log("Cost of Map: %fms", tMapEnd.Sub(tMapStart).Seconds()*1000)
+		}
 	}()
 
+	tReduceStart := time.Now()
 	groupCollection := make([]map[string]*GroupEntry, nThread)
 	rCnt := int32(0)
 	Parallel(nThread, true, func(id int) {
@@ -260,6 +267,7 @@ func (d *DataFrameWithGroupBy) buildFromDFImpl2(df *DataFrame, keyCols []string)
 
 	tEndMR := time.Now()
 	if gSettings.Profiling {
+		Log("Cost of Reduce: %fms", tEndMR.Sub(tReduceStart).Seconds()*1000)
 		Log("Cost of map reduce: %fms", tEndMR.Sub(tStartMR).Seconds()*1000)
 	}
 
