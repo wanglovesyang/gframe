@@ -24,7 +24,11 @@ func Parallel(threads int, f func(id int)) (reterr error) {
 	for i := 0; i < threads; i++ {
 		wg.Add(1)
 		go func(i int) {
-			defer wg.Done()
+			defer func() {
+				recover()
+				wg.Done()
+			}()
+
 			f(i)
 		}(i)
 	}
