@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"time"
 )
 
 func (e *DataFrame) DropColumnInplace(col string) (reterr error) {
@@ -167,6 +168,14 @@ func (e *DataFrame) fillCalculateResult(cols []ColEntry, res []reflect.Value, ro
 }
 
 func (e *DataFrame) Calculate(argCols, retCols []string, fc interface{}) (reterr error) {
+	if gSettings.Profiling {
+		tStart := time.Now()
+		defer func() {
+			tEnd := time.Now()
+			log.Printf("Cost of column caculate: %fms", tEnd.Sub(tStart).Seconds()*1000)
+		}()
+	}
+
 	argColsE := make([]ColEntry, len(argCols))
 	for i, col := range argCols {
 		if ent, suc := e.colMap[col]; !suc {

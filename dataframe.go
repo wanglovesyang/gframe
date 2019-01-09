@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -522,6 +523,14 @@ func (d *DataFrame) applyOnColumn(col []float32, op interface{}) (ret float32) {
 }
 
 func (d *DataFrame) Apply(ops map[string]interface{}) (ret map[string]float32) {
+	if gSettings.Profiling {
+		tStart := time.Now()
+		defer func() {
+			tEnd := time.Now()
+			log.Printf("Cost of applying on columns: %fms", tEnd.Sub(tStart).Seconds()*1000)
+		}()
+	}
+
 	opList := flatternOpList(ops)
 	res := make([]float32, len(opList))
 	reqCols := make([]string, len(opList))
@@ -608,6 +617,14 @@ func CreateByData(data map[string]interface{}) (ret *DataFrame, reterr error) {
 }
 
 func (d *DataFrame) Copy(copyData bool) (ret *DataFrame) {
+	if gSettings.Profiling {
+		tStart := time.Now()
+		defer func() {
+			tEnd := time.Now()
+			log.Printf("Cost of copying: %fms", tEnd.Sub(tStart).Seconds()*1000)
+		}()
+	}
+
 	ret = &DataFrame{}
 	ret.colMap = make(map[string]ColEntry)
 	for k, v := range d.colMap {

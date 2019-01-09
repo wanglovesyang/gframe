@@ -6,6 +6,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"time"
 )
 
 type AugHistogram struct {
@@ -167,6 +168,14 @@ func (d *DataFrameWithGroupBy) getKeyIDTuples(keyCols []string) (ret []KeyID, re
 }
 
 func (d *DataFrameWithGroupBy) buildFromDF(df *DataFrame, keyCols []string) (reterr error) {
+	if gSettings.Profiling {
+		tStart := time.Now()
+		defer func() {
+			tEnd := time.Now()
+			log.Printf("Cost of building groups from dataframe: %fms", tEnd.Sub(tStart).Seconds()*1000)
+		}()
+	}
+
 	d.DataFrame = *df
 	d.keyCols = make([]string, len(keyCols))
 	copy(d.keyCols, keyCols)
@@ -175,9 +184,15 @@ func (d *DataFrameWithGroupBy) buildFromDF(df *DataFrame, keyCols []string) (ret
 		return
 	}
 
+	tStartSort := time.Now()
 	d.groupMap = make(map[string]*GroupEntry)
 	ParallelSort(kids)
+	tEndSort := time.Now()
+	if gSettings.Profiling {
+		log.Printf("Cost of parallel sorting in building groups: %fms", tEndSort.Sub(tStartSort).Seconds()*1000)
+	}
 
+	tStartBuild := time.Now()
 	curKey := ""
 	var ids []int32
 	for _, kd := range kids {
@@ -206,7 +221,18 @@ func (d *DataFrameWithGroupBy) buildFromDF(df *DataFrame, keyCols []string) (ret
 		d.groups = append(d.groups, group)
 	}
 
+	tEndBuild := time.Now()
+	if gSettings.Profiling {
+		log.Printf("Cost of building groups struct: %fms", tEndBuild.Sub(tStartBuild).Seconds()*1000)
+	}
+
+	tStartHist := time.Now()
 	d.buildHistogram(d.getValueColumnNames())
+	tEndHist := time.Now()
+	if gSettings.Profiling {
+		log.Printf("Cost of building histogram: %fms", tEndHist.Sub(tStartHist).Seconds()*1000)
+	}
+
 	return
 }
 
@@ -411,6 +437,14 @@ func (d *DataFrameWithGroupBy) ApplyEachGroup(ops map[string]interface{}) (ret *
 }
 
 func (d *DataFrameWithGroupBy) Rank(pct bool, cols []string, suffix string) (ret *DataFrame) {
+	if gSettings.Profiling {
+		tStart := time.Now()
+		defer func() {
+			tEnd := time.Now()
+			log.Printf("Cost of ranking: %fms", tEnd.Sub(tStart).Seconds()*1000)
+		}()
+	}
+
 	histIds := make([]int32, len(cols))
 	for i, c := range cols {
 		cl, suc := d.histCols[c]
@@ -452,6 +486,14 @@ type mappedEntry struct {
 }
 
 func (d *DataFrameWithGroupBy) LeftMerge(t *DataFrameWithGroupBy, suffix string, firstMatchOnly bool) (ret *DataFrame) {
+	if gSettings.Profiling {
+		tStart := time.Now()
+		defer func() {
+			tEnd := time.Now()
+			log.Printf("Cost of merge: %fms", tEnd.Sub(tStart).Seconds()*1000)
+		}()
+	}
+
 	if !StrSeqEqual(d.keyCols, t.keyCols) {
 		panic(fmt.Errorf("unable to merge two groupby frame with different key columns"))
 	}
@@ -589,6 +631,14 @@ func (d *DataFrameWithGroupBy) LeftMerge(t *DataFrameWithGroupBy, suffix string,
 }
 
 func (d *DataFrameWithGroupBy) FindOrder(t *DataFrameWithGroupBy, cols []string, pct bool, suffix string, keepKeyCols bool) (ret *DataFrame) {
+	if gSettings.Profiling {
+		tStart := time.Now()
+		defer func() {
+			tEnd := time.Now()
+			log.Printf("Cost of finding order: %fms", tEnd.Sub(tStart).Seconds()*1000)
+		}()
+	}
+
 	var reterr error
 	defer func() {
 		if reterr != nil {

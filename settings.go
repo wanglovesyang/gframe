@@ -5,6 +5,7 @@ type Settings struct {
 	HistogramBins  int32
 	FloatPrecision int32
 	ExploringDepth int32
+	Profiling      bool
 }
 
 var DefaultSettings = Settings{
@@ -12,6 +13,7 @@ var DefaultSettings = Settings{
 	HistogramBins:  16,
 	FloatPrecision: 6,
 	ExploringDepth: 100,
+	Profiling:      false,
 }
 
 var gSettings = DefaultSettings
