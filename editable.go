@@ -218,7 +218,7 @@ func (e *DataFrame) Calculate(argCols, retCols []string, fc interface{}) (reterr
 	}
 
 	fcv := reflect.ValueOf(fc)
-	Parallel(int(gSettings.ThreadNum), func(id int) {
+	Parallel(int(gSettings.ThreadNum), true, func(id int) {
 		for i := id; i < e.shape[0]; i += int(gSettings.ThreadNum) {
 			vals := e.makeArgList(argColsE, int32(i))
 			res := fcv.Call(vals)

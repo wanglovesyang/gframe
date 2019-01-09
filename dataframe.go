@@ -576,7 +576,7 @@ func (d *DataFrame) Apply(ops map[string]interface{}) (ret map[string]float32) {
 		}
 	}
 
-	Parallel(int(gSettings.ThreadNum), func(id int) {
+	Parallel(int(gSettings.ThreadNum), true, func(id int) {
 		for i := id; i < len(opList); i += int(gSettings.ThreadNum) {
 			res[i] = d.applyOnColumn(colVals[i], opList[i].Op)
 		}

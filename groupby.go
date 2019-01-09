@@ -202,7 +202,7 @@ func (d *DataFrameWithGroupBy) buildFromDFImpl2(df *DataFrame, keyCols []string)
 	// GenKeyTuples
 	go func() {
 		cntH := int32(0)
-		Parallel(nThread, func(id int) {
+		Parallel(nThread, true, func(id int) {
 			buf := make([]string, len(keyCols))
 			for i := id; i < d.shape[0]; i += int(nThread) {
 				key := strings.Join(buf, IDMergeDelim)
@@ -220,7 +220,7 @@ func (d *DataFrameWithGroupBy) buildFromDFImpl2(df *DataFrame, keyCols []string)
 	}()
 
 	groupCollection := make([]map[string]*GroupEntry, nThread)
-	Parallel(nThread, func(id int) {
+	Parallel(nThread, true, func(id int) {
 		groups := make(map[string]*GroupEntry)
 		groupCollection[id] = groups
 		for v := range shufflers[id] {
@@ -361,7 +361,7 @@ func (d *DataFrameWithGroupBy) buildHistogram(cols []string) (reterr error) {
 	}
 
 	nThread := gSettings.ThreadNum
-	Parallel(int(nThread), func(id int) {
+	Parallel(int(nThread), true, func(id int) {
 		for i := id; i < len(d.groups); i += int(nThread) {
 			func(i int) {
 				/*defer func() {
@@ -529,7 +529,7 @@ func (d *DataFrameWithGroupBy) ApplyEachGroup(ops map[string]interface{}) (ret *
 	}
 
 	ret.registerColumns(colInfo)
-	Parallel(int(gSettings.ThreadNum), func(id int) {
+	Parallel(int(gSettings.ThreadNum), true, func(id int) {
 		for i := id; i < len(opList); i += int(gSettings.ThreadNum) {
 			op := opList[i]
 			ent := d.colMap[op.col]
@@ -586,7 +586,7 @@ func (d *DataFrameWithGroupBy) Rank(pct bool, cols []string, suffix string) (ret
 		rankCols[i] = make([]float32, d.shape[0])
 	}
 
-	Parallel(int(gSettings.ThreadNum), func(id int) {
+	Parallel(int(gSettings.ThreadNum), true, func(id int) {
 		for i := id; i < len(rankCols); i += int(gSettings.ThreadNum) {
 			hid := histIds[i]
 			for _, g := range d.groups {
@@ -680,7 +680,7 @@ func (d *DataFrameWithGroupBy) LeftMerge(t *DataFrameWithGroupBy, suffix string,
 	}
 
 	ret.alloc(nh)
-	Parallel(int(gSettings.ThreadNum), func(id int) {
+	Parallel(int(gSettings.ThreadNum), true, func(id int) {
 		for i := id; i < len(d.groups); i += int(gSettings.ThreadNum) {
 			gd := d.groups[i]
 			k := gd.getKeyStr()
@@ -822,7 +822,7 @@ func (d *DataFrameWithGroupBy) FindOrder(t *DataFrameWithGroupBy, cols []string,
 	Log("allocatingg with size %d", t.shape[0])
 	ret.alloc(t.shape[0])
 
-	Parallel(int(gSettings.ThreadNum), func(id int) {
+	Parallel(int(gSettings.ThreadNum), true, func(id int) {
 		for i := id; i < len(t.groups); i += int(gSettings.ThreadNum) {
 			tg := t.groups[i]
 			k := tg.getKeyStr()

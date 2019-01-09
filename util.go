@@ -12,7 +12,7 @@ import (
 
 const SortMax = 2048
 
-func Parallel(threads int, f func(id int)) (reterr error) {
+func Parallel(threads int, logPanic bool, f func(id int)) (reterr error) {
 	defer func() {
 		if err := recover(); err != nil {
 			stack := debug.Stack()
@@ -25,7 +25,10 @@ func Parallel(threads int, f func(id int)) (reterr error) {
 		wg.Add(1)
 		go func(i int) {
 			defer func() {
-				recover()
+				stack := debug.Stack()
+				if err := recover(); err != nil && logPanic {
+					Log("Error panics in parallel, %v, stack = %s", err, stack)
+				}
 				wg.Done()
 			}()
 
