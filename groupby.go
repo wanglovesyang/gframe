@@ -3,6 +3,7 @@ package gframe
 import (
 	"fmt"
 	"math"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
@@ -167,6 +168,13 @@ func (d *DataFrameWithGroupBy) getKeyIDTuples(keyCols []string) (ret []KeyID, re
 }
 
 func (d *DataFrameWithGroupBy) buildFromDF(df *DataFrame, keyCols []string) (reterr error) {
+	defer func() {
+		if err := recover(); err != nil {
+			stack := debug.Stack()
+			panic(fmt.Errorf("Error panics: %v, stack = %s", err, stack))
+		}
+	}()
+
 	if gSettings.Profiling {
 		tStart := time.Now()
 		defer func() {
@@ -245,7 +253,15 @@ func (d *DataFrameWithGroupBy) buildHistogram(cols []string) (reterr error) {
 	nThread := gSettings.ThreadNum
 	Parallel(int(nThread), func(id int) {
 		for i := id; i < len(d.groups); i += int(nThread) {
-			d.groups[i].buildHistogram(colVals, gSettings.HistogramBins)
+			func(i int) {
+				defer func() {
+					if err := recover(); err != nil {
+						Log("Error panics in No.%d group", i)
+					}
+				}()
+
+				d.groups[i].buildHistogram(colVals, gSettings.HistogramBins)
+			}(i)
 		}
 	})
 

@@ -372,6 +372,13 @@ func (d *DataFrame) SelectByColumns(cols ...string) (ret *DataFrame) {
 		return
 	}
 
+	defer func() {
+		if err := recover(); err != nil {
+			stack := debug.Stack()
+			panic(fmt.Errorf("Error panics: %v, stack = %s", err, stack))
+		}
+	}()
+
 	ret = &DataFrame{
 		colMap: make(map[string]ColEntry),
 	}
@@ -405,6 +412,13 @@ func (d *DataFrame) SelectByRows(rows ...int32) (ret *DataFrame) {
 		}
 	}
 
+	defer func() {
+		if err := recover(); err != nil {
+			stack := debug.Stack()
+			panic(fmt.Errorf("Error panics: %v, stack = %s", err, stack))
+		}
+	}()
+
 	ret = &DataFrame{
 		colMap:  make(map[string]ColEntry),
 		cols:    make([]ColEntry, len(d.cols)),
@@ -429,11 +443,16 @@ func (d *DataFrame) SelectByRows(rows ...int32) (ret *DataFrame) {
 	return
 }
 
-func (d *DataFrame) SelectRange(beg, end int32) (ret *DataFrame, reterr error) {
+func (d *DataFrame) SelectRange(beg, end int32) (ret *DataFrame) {
+	var reterr error
 	defer func() {
 		if err := recover(); err != nil {
 			stack := debug.Stack()
-			reterr = fmt.Errorf("Error panics: %v, stack = %s", err, stack)
+			panic(fmt.Errorf("Error panics: %v, stack = %s", err, stack))
+		}
+
+		if reterr != nil {
+			panic(reterr)
 		}
 	}()
 
