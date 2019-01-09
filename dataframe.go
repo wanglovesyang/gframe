@@ -450,8 +450,8 @@ func (d *DataFrame) SelectRange(beg, end int32) (ret *DataFrame, reterr error) {
 	ret = &DataFrame{
 		colMap:  make(map[string]ColEntry),
 		cols:    make([]ColEntry, len(d.cols)),
-		idCols:  make([][]string, len(d.cols)),
-		valCols: make([][]float32, len(d.cols)),
+		idCols:  make([][]string, len(d.idCols)),
+		valCols: make([][]float32, len(d.valCols)),
 		shape:   [2]int{int(end - beg), d.shape[1]},
 	}
 
