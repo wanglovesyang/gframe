@@ -323,7 +323,6 @@ func (d *DataFrame) loadCSV(path string, smartCols bool) (reterr error) {
 			continue
 		}
 
-		Log("loading %d/%d", off, d.shape[0])
 		for j, v := range eles {
 			id := colEntries[j].id
 			switch colEntries[j].tp {
