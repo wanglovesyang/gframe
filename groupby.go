@@ -6,6 +6,7 @@ import (
 	"runtime/debug"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	mm "github.com/spaolacci/murmur3"
@@ -200,18 +201,22 @@ func (d *DataFrameWithGroupBy) buildFromDFImpl2(df *DataFrame, keyCols []string)
 
 	// GenKeyTuples
 	go func() {
+		cntH := int32(0)
 		Parallel(nThread, func(id int) {
 			buf := make([]string, len(keyCols))
 			for i := id; i < d.shape[0]; i += int(nThread) {
 				key := strings.Join(buf, IDMergeDelim)
 				tid := int(mm.Sum32([]byte(key))) % nThread
 				shufflers[tid] <- KeyID{key, int32(i)}
+				atomic.AddInt32(&cntH, 1)
 			}
 		})
 
 		for i := 0; i < nThread; i++ {
 			close(shufflers[i])
 		}
+
+		Log("totally %d rows mapped", cntH)
 	}()
 
 	groupCollection := make([]map[string]*GroupEntry, nThread)
