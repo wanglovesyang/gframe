@@ -344,6 +344,10 @@ func (d *DataFrameWithGroupBy) buildFromDF(df *DataFrame, keyCols []string) (ret
 	return
 }
 
+func (d *DataFrameWithGroupBy) NumGroups() int32 {
+	return int32(len(d.groups))
+}
+
 func (d *DataFrameWithGroupBy) buildHistogram(cols []string) (reterr error) {
 	d.histCols = make(map[string]ColEntry)
 	colVals, reterr := d.getValCols(cols...)
