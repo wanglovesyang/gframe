@@ -255,8 +255,9 @@ func (d *DataFrameWithGroupBy) buildHistogram(cols []string) (reterr error) {
 		for i := id; i < len(d.groups); i += int(nThread) {
 			func(i int) {
 				defer func() {
+					stack := debug.Stack()
 					if err := recover(); err != nil {
-						Log("Error panics in No.%d group", i)
+						Log("Error panics in No.%d group stack = %s", i, stack)
 					}
 				}()
 
