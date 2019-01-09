@@ -526,7 +526,7 @@ func (d *DataFrame) MaxValues(cols ...string) (ret []float32, reterr error) {
 
 func (d *DataFrame) GroupBy(cols ...string) (ret *DataFrameWithGroupBy) {
 	ret = &DataFrameWithGroupBy{}
-	if err := ret.buildFromDF(d, cols); err != nil {
+	if err := ret.buildFromDFImpl2(d, cols); err != nil {
 		ret = nil
 		Log("Error: %v", err)
 	}
