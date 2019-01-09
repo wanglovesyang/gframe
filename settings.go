@@ -6,6 +6,7 @@ type Settings struct {
 	FloatPrecision int32
 	ExploringDepth int32
 	Profiling      bool
+	Debug          bool
 }
 
 var DefaultSettings = Settings{

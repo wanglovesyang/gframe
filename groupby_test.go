@@ -24,8 +24,9 @@ func initComDF() {
 
 func TestDataFrameGroupby_buildFromDF(t *testing.T) {
 	defer func() {
+		stack := debug.Stack()
 		if err := recover(); err != nil {
-			t.Fatalf("error panics %v", err)
+			t.Fatalf("error panics %v, stack = %s", err, stack)
 		}
 	}()
 
@@ -48,6 +49,7 @@ func TestDataFrameGroupby_buildFromDF(t *testing.T) {
 		t.Errorf("nil error when building with id columns")
 	}
 
+	t.Logf("d.shape = %v", d.shape)
 	g3 := d.GroupBy("a")
 
 	if len(g3.groups) != 3 {
@@ -88,7 +90,7 @@ func TestDataFrameGroupby_ApplyEachGroup(t *testing.T) {
 	})
 
 	if len(res.cols) != 3 {
-		t.Errorf("invalid columns size")
+		t.Errorf("invalid columns size [%d/%d]", len(res.cols), 3)
 	}
 
 	if res.shape[0] != 3 {
@@ -101,7 +103,11 @@ func TestDataFrameGroupby_ApplyEachGroup(t *testing.T) {
 		"g3": 3,
 	}
 
-	groupsA, _ := res.getIdCols("a")
+	groupsA, err := res.getIdCols("a")
+	if err != nil {
+		t.Fatalf("error in fetch groups a, %v", err)
+	}
+
 	groups := groupsA[0]
 	mins, _ := res.getValCols("b", "c")
 	for i := 0; i < len(mins[0]); i++ {

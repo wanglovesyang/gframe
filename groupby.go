@@ -178,7 +178,7 @@ func (d *DataFrameWithGroupBy) buildFromDFImpl2(df *DataFrame, keyCols []string)
 	defer func() {
 		if err := recover(); err != nil {
 			stack := debug.Stack()
-			panic(fmt.Errorf("Error panics: %v, stack = %s", err, stack))
+			reterr = fmt.Errorf("Error panics: %v, stack = %s", err, stack)
 		}
 	}()
 
@@ -190,7 +190,14 @@ func (d *DataFrameWithGroupBy) buildFromDFImpl2(df *DataFrame, keyCols []string)
 		}()
 	}
 
+	d.DataFrame = *df
+	d.keyCols = keyCols
+
 	tStartMR := time.Now()
+	kc, reterr := df.getIdCols(keyCols...)
+	if reterr != nil {
+		return
+	}
 
 	// shuffers
 	nThread := int(gSettings.ThreadNum)
@@ -199,12 +206,20 @@ func (d *DataFrameWithGroupBy) buildFromDFImpl2(df *DataFrame, keyCols []string)
 		shufflers[i] = make(chan KeyID, 1000)
 	}
 
+	if gSettings.Debug {
+		Log("d.shape = %v", df.shape)
+	}
+
 	// GenKeyTuples
 	go func() {
 		cntH := int32(0)
 		Parallel(nThread, true, func(id int) {
 			buf := make([]string, len(keyCols))
-			for i := id; i < d.shape[0]; i += int(nThread) {
+			for i := id; i < df.shape[0]; i += int(nThread) {
+				for j := 0; j < len(kc); j++ {
+					buf[j] = kc[j][i]
+				}
+
 				key := strings.Join(buf, IDMergeDelim)
 				tid := int(mm.Sum32([]byte(key))) % nThread
 				shufflers[tid] <- KeyID{key, int32(i)}
@@ -216,10 +231,13 @@ func (d *DataFrameWithGroupBy) buildFromDFImpl2(df *DataFrame, keyCols []string)
 			close(shufflers[i])
 		}
 
-		Log("totally %d rows mapped", cntH)
+		if gSettings.Debug {
+			Log("totally %d rows mapped", cntH)
+		}
 	}()
 
 	groupCollection := make([]map[string]*GroupEntry, nThread)
+	rCnt := int32(0)
 	Parallel(nThread, true, func(id int) {
 		groups := make(map[string]*GroupEntry)
 		groupCollection[id] = groups
@@ -236,6 +254,7 @@ func (d *DataFrameWithGroupBy) buildFromDFImpl2(df *DataFrame, keyCols []string)
 
 			g.ids = append(g.ids, v.ID)
 			groups[v.Key] = g
+			atomic.AddInt32(&rCnt, 1)
 		}
 	})
 
@@ -248,6 +267,10 @@ func (d *DataFrameWithGroupBy) buildFromDFImpl2(df *DataFrame, keyCols []string)
 	amt := 0
 	for _, gp := range groupCollection {
 		amt += len(gp)
+	}
+
+	if gSettings.Debug {
+		Log("totally %d groups", amt)
 	}
 
 	d.groups = make([]*GroupEntry, 0, amt)
@@ -525,10 +548,16 @@ func (d *DataFrameWithGroupBy) ApplyEachGroup(ops map[string]interface{}) (ret *
 			panic(fmt.Errorf("column %s is already in group key", op.col))
 		}
 
-		colInfo[op.col+op.Surfix] = int(d.colMap[op.col].tp)
+		if c, suc := d.colMap[op.col]; !suc {
+			panic(fmt.Errorf("column %s does not exist in frame", op.col))
+		} else {
+			colInfo[op.col+op.Surfix] = int(c.tp)
+		}
 	}
 
 	ret.registerColumns(colInfo)
+	Log("registering %v", colInfo)
+
 	Parallel(int(gSettings.ThreadNum), true, func(id int) {
 		for i := id; i < len(opList); i += int(gSettings.ThreadNum) {
 			op := opList[i]

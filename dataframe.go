@@ -16,7 +16,10 @@ import (
 const (
 	Droped  = -2
 	Unknown = -1
-	String  = iota
+)
+
+const (
+	String = iota
 	Float32
 )
 
@@ -200,10 +203,17 @@ func (d *DataFrame) alloc(cnt int) {
 	d.shape[0] = cnt
 }
 
-func countLines(r io.Reader) (int, error) {
+func countLines(r io.Reader) (ret int, reterr error) {
 	buf := make([]byte, 32*1024)
 	count := 0
 	lineSep := []byte{'\n'}
+
+	nlAtLast := false
+	defer func() {
+		if !nlAtLast {
+			ret++
+		}
+	}()
 
 	for {
 		c, err := r.Read(buf)
@@ -212,9 +222,10 @@ func countLines(r io.Reader) (int, error) {
 		switch {
 		case err == io.EOF:
 			return count, nil
-
 		case err != nil:
 			return count, err
+		case c > 0:
+			nlAtLast = buf[c-1] == '\n'
 		}
 	}
 }
@@ -312,6 +323,7 @@ func (d *DataFrame) loadCSV(path string, smartCols bool) (reterr error) {
 			continue
 		}
 
+		Log("loading %d/%d", off, d.shape[0])
 		for j, v := range eles {
 			id := colEntries[j].id
 			switch colEntries[j].tp {
