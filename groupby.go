@@ -1,6 +1,7 @@
 package gframe
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"runtime/debug"
@@ -215,15 +216,17 @@ func (d *DataFrameWithGroupBy) buildFromDFImpl2(df *DataFrame, keyCols []string)
 		tMapStart := time.Now()
 		cntH := int32(0)
 		Parallel(nThread, true, func(id int) {
-			buf := make([]string, len(keyCols))
+			buf := bytes.Buffer{}
 			for i := id; i < df.shape[0]; i += int(nThread) {
-				for j := 0; j < len(kc); j++ {
-					buf[j] = kc[j][i]
+				for j := 0; j < len(kc)-1; j++ {
+					buf.WriteString(kc[j][i])
+					buf.WriteByte(IDMergeDelimChar)
 				}
+				buf.WriteString(kc[len(kc)-1][i])
 
-				key := strings.Join(buf, IDMergeDelim)
-				tid := int(mm.Sum32([]byte(key))) % nThread
-				shufflers[tid] <- KeyID{key, int32(i)}
+				key := buf.Bytes()
+				tid := int(mm.Sum32(key)) % nThread
+				shufflers[tid] <- KeyID{string(key), int32(i)}
 				atomic.AddInt32(&cntH, 1)
 			}
 		})

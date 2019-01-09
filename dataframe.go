@@ -25,6 +25,7 @@ const (
 
 const MaxCSVBufferSize = 10000000
 const IDMergeDelim = "\t"
+const IDMergeDelimChar = '\t'
 
 type ColEntry struct {
 	Name string
