@@ -137,7 +137,7 @@ func TestDataFrameGroupby_Rank_panic_if_id_column(t *testing.T) {
 	}()
 
 	g := comDF.GroupBy("a")
-	_ = g.Rank(false, []string{"a"}, "_rnk")
+	_ = g.Rank(false, []string{"a"}, "_rnk", false)
 }
 
 func TestDataFrameGroupby_Rank_consistency_check(t *testing.T) {
@@ -153,7 +153,7 @@ func TestDataFrameGroupby_Rank_consistency_check(t *testing.T) {
 	}
 
 	g := comDF.GroupBy("a")
-	rank := g.Rank(false, []string{"b", "c"}, "_rnk")
+	rank := g.Rank(false, []string{"b", "c"}, "_rnk", false)
 	if rank.shape[1] != 2 {
 		t.Errorf("inconsistent shape of rank result")
 	}

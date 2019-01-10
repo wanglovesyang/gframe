@@ -206,7 +206,7 @@ func (d *DataFrameWithGroupBy) BuildOrderGroups(cols []string) (reterr error) {
 	}
 
 	if len(ignoreCols) > 0 {
-		Log("order groups of columns %v have already been built")
+		Log("order groups of columns %v have already been built", ignoreCols)
 	}
 
 	if len(newCols) == 0 {
@@ -459,7 +459,7 @@ func (d *DataFrameWithGroupBy) buildRankOp(name string) (ret RankOps) {
 	return
 }
 
-func (d *DataFrameWithGroupBy) Rank(pct bool, cols []string, suffix string) (ret *DataFrame) {
+func (d *DataFrameWithGroupBy) Rank(pct bool, cols []string, suffix string, keepKeyRank bool) (ret *DataFrame) {
 	if gSettings.Profiling {
 		tStart := time.Now()
 		defer func() {
@@ -516,6 +516,15 @@ func (d *DataFrameWithGroupBy) Rank(pct bool, cols []string, suffix string) (ret
 			}
 		}
 	})
+
+	if keepKeyRank {
+		cols, _ := d.GetIdColumns(d.keyCols...)
+		for i, key := range d.keyCols {
+			nc := make([]string, len(cols[i]))
+			copy(nc, cols[i])
+			ret.PasteIdColumn(key, nc)
+		}
+	}
 
 	return
 }
