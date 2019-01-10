@@ -40,12 +40,12 @@ func TestDataFrameGroupby_buildFromDF(t *testing.T) {
 	)
 
 	g1 := &DataFrameWithGroupBy{}
-	if err := g1.buildFromDF(d, []string{"j"}); err == nil {
+	if err := g1.buildFromDFMR(d, []string{"j"}); err == nil {
 		t.Errorf("nil error when building with magic columns")
 	}
 
 	g2 := &DataFrameWithGroupBy{}
-	if err := g2.buildFromDF(d, []string{"b"}); err == nil {
+	if err := g2.buildFromDFMR(d, []string{"b"}); err == nil {
 		t.Errorf("nil error when building with id columns")
 	}
 
@@ -74,7 +74,7 @@ func TestDataFrameGroupby_buildFromDF(t *testing.T) {
 	t.Logf("group map = %s", jd)
 }
 
-func TestDataFrameGroupby_ApplyEachGroup(t *testing.T) {
+func TestDataFrameGroupby_Aggregate(t *testing.T) {
 	defer func() {
 		stack := debug.Stack()
 		if err := recover(); err != nil {
@@ -84,7 +84,7 @@ func TestDataFrameGroupby_ApplyEachGroup(t *testing.T) {
 
 	initOnceGroupBy.Do(initComDF)
 	g := comDF.GroupBy("a")
-	res := g.ApplyEachGroup(map[string]interface{}{
+	res := g.Aggregate(map[string]interface{}{
 		"b": ReduceMin,
 		"c": ReduceMax,
 	})

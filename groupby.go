@@ -3,7 +3,6 @@ package gframe
 import (
 	"bytes"
 	"fmt"
-	"math"
 	"runtime/debug"
 	"sort"
 	"strings"
@@ -13,128 +12,16 @@ import (
 	mm "github.com/spaolacci/murmur3"
 )
 
-type AugHistogram struct {
-	binStride float32
-	min       float32
-	max       float32
-	integral  []int32
-	bins      [][]int32
-}
-
-func (a *AugHistogram) build(ids []int32, col []float32, binSize int32) {
-	min, max := float32(math.MaxFloat32), float32(-math.MaxFloat32)
-	for _, id := range ids {
-		if col[id] < min {
-			min = col[id]
-		}
-
-		if col[id] > max {
-			max = col[id]
-		}
-	}
-
-	a.bins = make([][]int32, binSize)
-	a.min = min
-	a.max = max
-	max *= 1.1
-	a.binStride = (max - min) / float32(binSize)
-
-	for _, id := range ids {
-		l := a.locate(col[id])
-		if l < 0 {
-			l = 0
-		}
-
-		if int(l) >= len(a.bins) {
-			Log("Invalid l value, over bound, l = %d, val = %f, min = %f, max = %f", l, col[id], a.min, a.max)
-		}
-		a.bins[l] = append(a.bins[l], id)
-	}
-
-	a.integral = make([]int32, len(a.bins)+1)
-	inte := int32(0)
-	for i, b := range a.bins {
-		a.integral[i] = inte
-		inte += int32(len(b))
-		sort.Slice(b, func(i, j int) bool { return col[b[i]] < col[b[j]] })
-	}
-	a.integral[len(a.bins)] = inte
-
-	return
-}
-
-func (a *AugHistogram) locate(v float32) (ret int32) {
-	ret = int32((v - a.min) / a.binStride)
-	return
-}
-
-func (a *AugHistogram) findOrder(v float32, col []float32) (ret int32) {
-	loc := a.locate(v)
-	l := int32(len(a.bins))
-	if loc < 0 {
-		ret = 0
-	} else if loc >= l {
-		ret = a.integral[l]
-	} else {
-		ret = a.integral[loc] + int32(sort.Search(len(a.bins[loc]), func(i int) bool { return v < col[a.bins[loc][i]] }))
-	}
-
-	return
-}
-
-func (a *AugHistogram) fillOrders(pct bool, out []float32) {
-	cnt := 0
-	all := a.integral[len(a.integral)-1]
-	dm := float32(all - 1)
-	if all <= 1 {
-		dm = 1
-	}
-
-	proc := func(v float32) float32 {
-		return 1 - v/dm
-	}
-	if !pct {
-		proc = func(v float32) float32 {
-			return v
-		}
-	}
-
-	for _, bin := range a.bins {
-		for _, b := range bin {
-			out[b] = proc(float32(b))
-			cnt++
-		}
-	}
-
-	return
-}
-
-func (a *AugHistogram) getSortedId() (ret []int32) {
-	cnt := 0
-	ret = make([]int32, a.integral[len(a.integral)-1])
-	for _, bin := range a.bins {
-		for _, b := range bin {
-			ret[cnt] = b
-			cnt++
-		}
-	}
-
-	return
-}
-
 //-------------------------------------------------------
 type GroupEntry struct {
-	keys  []string
-	ids   []int32
-	hists []AugHistogram
-	//histCols []string
+	keys        []string
+	ids         []int32
+	orderGroups []OrderGroup
 }
 
-func (g *GroupEntry) buildHistogram(cols [][]float32, binSize int32) {
-	g.hists = make([]AugHistogram, len(cols))
-	for i, col := range cols {
-		g.hists[i].build(g.ids, col, binSize)
-	}
+func (g *GroupEntry) addOrderGroup(col []float32) {
+	g.orderGroups = append(g.orderGroups, NewOrderGroup(col, g.ids))
+	return
 }
 
 func (g *GroupEntry) getKeyStr() string {
@@ -146,7 +33,8 @@ type DataFrameWithGroupBy struct {
 	keyCols []string
 
 	//histograms
-	histCols map[string]ColEntry
+	orderCols   []ColEntry
+	orderColMap map[string]ColEntry
 
 	//entries
 	groups   []*GroupEntry
@@ -175,7 +63,7 @@ func (d *DataFrameWithGroupBy) getKeyIDTuples(keyCols []string) (ret []KeyID, re
 	return
 }
 
-func (d *DataFrameWithGroupBy) buildFromDFImpl2(df *DataFrame, keyCols []string) (reterr error) {
+func (d *DataFrameWithGroupBy) buildFromDFMR(df *DataFrame, keyCols []string) (reterr error) {
 	defer func() {
 		if err := recover(); err != nil {
 			stack := debug.Stack()
@@ -193,6 +81,7 @@ func (d *DataFrameWithGroupBy) buildFromDFImpl2(df *DataFrame, keyCols []string)
 
 	d.DataFrame = *df
 	d.keyCols = keyCols
+	d.orderColMap = make(map[string]ColEntry)
 
 	tStartMR := time.Now()
 	kc, reterr := df.getIdCols(keyCols...)
@@ -298,89 +187,6 @@ func (d *DataFrameWithGroupBy) buildFromDFImpl2(df *DataFrame, keyCols []string)
 		Log("Cost of merging groups: %fms", tEndMerge.Sub(tStartMerge).Seconds()*1000)
 	}
 
-	tStartHist := time.Now()
-	reterr = d.buildHistogram(d.getValueColumnNames())
-	tEndHist := time.Now()
-	if gSettings.Profiling {
-		Log("Cost of building histogram: %fms", tEndHist.Sub(tStartHist).Seconds()*1000)
-	}
-
-	return
-}
-
-func (d *DataFrameWithGroupBy) buildFromDF(df *DataFrame, keyCols []string) (reterr error) {
-	defer func() {
-		if err := recover(); err != nil {
-			stack := debug.Stack()
-			panic(fmt.Errorf("Error panics: %v, stack = %s", err, stack))
-		}
-	}()
-
-	if gSettings.Profiling {
-		tStart := time.Now()
-		defer func() {
-			tEnd := time.Now()
-			Log("Cost of building groups from dataframe: %fms", tEnd.Sub(tStart).Seconds()*1000)
-		}()
-	}
-
-	d.DataFrame = *df
-	d.keyCols = make([]string, len(keyCols))
-	copy(d.keyCols, keyCols)
-	kids, reterr := d.getKeyIDTuples(keyCols)
-	if reterr != nil {
-		return
-	}
-
-	tStartSort := time.Now()
-	d.groupMap = make(map[string]*GroupEntry)
-	ParallelSort(kids)
-	tEndSort := time.Now()
-	if gSettings.Profiling {
-		Log("Cost of parallel sorting in building groups: %fms", tEndSort.Sub(tStartSort).Seconds()*1000)
-	}
-
-	tStartBuild := time.Now()
-	curKey := ""
-	var ids []int32
-	for _, kd := range kids {
-		if curKey != kd.Key && curKey != "" {
-			group := &GroupEntry{
-				ids:  ids,
-				keys: strings.Split(curKey, IDMergeDelim),
-			}
-
-			d.groupMap[curKey] = group
-			d.groups = append(d.groups, group)
-			ids = nil
-		}
-
-		ids = append(ids, kd.ID)
-		curKey = kd.Key
-	}
-
-	if len(ids) > 0 {
-		group := &GroupEntry{
-			ids:  ids,
-			keys: strings.Split(curKey, IDMergeDelim),
-		}
-
-		d.groupMap[curKey] = group
-		d.groups = append(d.groups, group)
-	}
-
-	tEndBuild := time.Now()
-	if gSettings.Profiling {
-		Log("Cost of building groups struct: %fms", tEndBuild.Sub(tStartBuild).Seconds()*1000)
-	}
-
-	tStartHist := time.Now()
-	reterr = d.buildHistogram(d.getValueColumnNames())
-	tEndHist := time.Now()
-	if gSettings.Profiling {
-		Log("Cost of building histogram: %fms", tEndHist.Sub(tStartHist).Seconds()*1000)
-	}
-
 	return
 }
 
@@ -388,38 +194,51 @@ func (d *DataFrameWithGroupBy) NumGroups() int32 {
 	return int32(len(d.groups))
 }
 
-func (d *DataFrameWithGroupBy) buildHistogram(cols []string) (reterr error) {
-	d.histCols = make(map[string]ColEntry)
-	colVals, reterr := d.getValCols(cols...)
+func (d *DataFrameWithGroupBy) BuildOrderGroups(cols []string) (reterr error) {
+	var newCols []string
+	var ignoreCols []string
+	for _, col := range cols {
+		if _, suc := d.orderColMap[col]; !suc {
+			newCols = append(newCols, col)
+		} else {
+			ignoreCols = append(ignoreCols, col)
+		}
+	}
+
+	if len(ignoreCols) > 0 {
+		Log("order groups of columns %v have already been built")
+	}
+
+	if len(newCols) == 0 {
+		return
+	}
+
+	colVals, reterr := d.getValCols(newCols...)
 	if reterr != nil {
 		return
+	}
+
+	for _, col := range newCols {
+		ent := ColEntry{
+			Name: col,
+			tp:   Float32,
+			id:   int32(len(d.orderCols)),
+		}
+
+		d.orderCols = append(d.orderCols, ent)
+		d.orderColMap[col] = ent
 	}
 
 	nThread := gSettings.ThreadNum
 	Parallel(int(nThread), true, func(id int) {
 		for i := id; i < len(d.groups); i += int(nThread) {
 			func(i int) {
-				/*defer func() {
-					stack := debug.Stack()
-					if err := recover(); err != nil {
-						Log("Error panics in No.%d group, err = %v, stack = %s", i, err, stack)
-					}
-				}()*/
-
-				d.groups[i].buildHistogram(colVals, gSettings.HistogramBins)
+				for _, col := range colVals {
+					d.groups[i].addOrderGroup(col)
+				}
 			}(i)
 		}
 	})
-
-	for i, col := range cols {
-		ent := ColEntry{
-			Name: col,
-			tp:   Float32,
-			id:   int32(i),
-		}
-
-		d.histCols[col] = ent
-	}
 
 	return
 }
@@ -457,16 +276,25 @@ func flatternOpList(ops map[string]interface{}) (ret []OperationTuple) {
 	return
 }
 
-func (d *DataFrameWithGroupBy) fastApply(ent ColEntry, op interface{}) (ret []float32, suc bool) {
-	cid := d.histCols[ent.Name].id
-	ret = make([]float32, len(d.groups))
+type AggregateApply func(g *GroupEntry) float32
+type AggregateApplyID func(g *GroupEntry) string
+
+func (d *DataFrameWithGroupBy) tryFastAggApply(ent ColEntry, op interface{}) (ret AggregateApply, suc bool) {
+	c, suc := d.orderColMap[ent.Name]
+	if !suc {
+		return
+	}
+
+	colVal := d.valCols[ent.id]
 	if op.(BinaryOP) == ReduceMax {
-		for i, g := range d.groups {
-			ret[i] = g.hists[cid].max
+		ret = func(g *GroupEntry) float32 {
+			r, _ := g.orderGroups[c.id].Max(colVal)
+			return r
 		}
 	} else if op.(BinaryOP) == ReduceMin {
-		for i, g := range d.groups {
-			ret[i] = g.hists[cid].min
+		ret = func(g *GroupEntry) float32 {
+			r, _ := g.orderGroups[c.id].Min(colVal)
+			return r
 		}
 	} else {
 		suc = false
@@ -476,29 +304,26 @@ func (d *DataFrameWithGroupBy) fastApply(ent ColEntry, op interface{}) (ret []fl
 	return
 }
 
-func (d *DataFrameWithGroupBy) applyEachGroupVal(ent ColEntry, op interface{}) (ret []float32) {
+func (d *DataFrameWithGroupBy) buildAggApplyVal(ent ColEntry, op interface{}) (ret AggregateApply) {
 	var suc bool
-	if ret, suc = d.fastApply(ent, op); suc {
+	if ret, suc = d.tryFastAggApply(ent, op); suc {
 		return
 	}
 
-	ret = make([]float32, len(d.groups))
 	cid := ent.id
+	colVal := d.valCols[cid]
 	switch p := op.(type) {
 	case BinaryOP:
-		colVal := d.valCols[cid]
-		for i, g := range d.groups {
+		ret = func(g *GroupEntry) float32 {
 			base := p.InitValue()
 			for _, id := range g.ids {
 				base = p.Operate(base, colVal[id])
 			}
-			ret[i] = base
+			return base
 		}
-
 	case ListOP:
-		colVal := d.valCols[cid]
-		var buf []float32
-		for i, g := range d.groups {
+		ret = func(g *GroupEntry) float32 {
+			var buf []float32
 			if len(buf) < len(g.ids) {
 				buf = append(buf, make([]float32, len(g.ids)-len(buf))...)
 			}
@@ -507,7 +332,7 @@ func (d *DataFrameWithGroupBy) applyEachGroupVal(ent ColEntry, op interface{}) (
 				buf[j] = colVal[id]
 			}
 
-			ret[i] = p(buf)
+			return p(buf)
 		}
 	default:
 		panic(fmt.Errorf("This type of operation cannot be adopted in value columns"))
@@ -516,14 +341,13 @@ func (d *DataFrameWithGroupBy) applyEachGroupVal(ent ColEntry, op interface{}) (
 	return
 }
 
-func (d *DataFrameWithGroupBy) applyEachGroupID(ent ColEntry, op interface{}) (ret []string) {
-	ret = make([]string, len(d.groups))
+func (d *DataFrameWithGroupBy) buildAggApplyID(ent ColEntry, op interface{}) (ret AggregateApplyID) {
 	cid := ent.id
+	idVal := d.idCols[cid]
 	switch p := op.(type) {
 	case IDListOP:
-		idVal := d.idCols[cid]
-		var buf []string
-		for i, g := range d.groups {
+		ret = func(g *GroupEntry) string {
+			var buf []string
 			if len(buf) < len(g.ids) {
 				buf = append(buf, make([]string, len(g.ids)-len(buf))...)
 			}
@@ -532,7 +356,7 @@ func (d *DataFrameWithGroupBy) applyEachGroupID(ent ColEntry, op interface{}) (r
 				buf[j] = idVal[id]
 			}
 
-			ret[i] = p(buf)
+			return p(buf)
 		}
 	default:
 		panic(fmt.Errorf("This type of operation cannot be adopted in value columns"))
@@ -541,7 +365,7 @@ func (d *DataFrameWithGroupBy) applyEachGroupID(ent ColEntry, op interface{}) (r
 	return
 }
 
-func (d *DataFrameWithGroupBy) ApplyEachGroup(ops map[string]interface{}) (ret *DataFrame) {
+func (d *DataFrameWithGroupBy) Aggregate(ops map[string]interface{}) (ret *DataFrame) {
 	opList := flatternOpList(ops)
 	for _, op := range opList {
 		if !validOperation(op.Op) {
@@ -549,56 +373,88 @@ func (d *DataFrameWithGroupBy) ApplyEachGroup(ops map[string]interface{}) (ret *
 		}
 	}
 
-	ret = &DataFrame{}
-	colInfo := make(map[string]int)
+	ret = Empty()
 	for _, col := range d.keyCols {
-		colInfo[col] = String
+		ret.addColumn(col, true, false)
 	}
 
+	type mapEntWithOps struct {
+		mappedEntry
+		valAgg AggregateApply
+		strAgg AggregateApplyID
+	}
+
+	opCols := make([]mapEntWithOps, 0, len(opList)+len(d.keyCols))
 	for _, op := range opList {
-		if _, suc := colInfo[op.col]; suc {
+		if _, suc := ret.colMap[op.col]; suc {
 			panic(fmt.Errorf("column %s is already in group key", op.col))
 		}
 
 		if c, suc := d.colMap[op.col]; !suc {
 			panic(fmt.Errorf("column %s does not exist in frame", op.col))
 		} else {
-			colInfo[op.col+op.Surfix] = int(c.tp)
+			ent, _ := ret.addColumn(op.col+op.Surfix, c.tp == String, false)
+			var mc mapEntWithOps
+			if c.tp == String {
+				mc.strAgg = d.buildAggApplyID(c, op.Op)
+			} else if c.tp == Float32 {
+				mc.valAgg = d.buildAggApplyVal(c, op.Op)
+			}
+			mc.mappedEntry = mappedEntry{
+				ColEntry:  ent,
+				srcIDLeft: c.id,
+			}
+
+			opCols = append(opCols, mc)
 		}
 	}
 
-	ret.registerColumns(colInfo)
-	Log("registering %v", colInfo)
-
+	ret.alloc(len(d.groups))
 	Parallel(int(gSettings.ThreadNum), true, func(id int) {
-		for i := id; i < len(opList); i += int(gSettings.ThreadNum) {
-			op := opList[i]
-			ent := d.colMap[op.col]
-			if ent.tp == String {
-				rs := d.applyEachGroupID(ent, op.Op)
-				rid := ret.colMap[op.col+op.Surfix].id
-				ret.idCols[rid] = rs
-			} else if ent.tp == Float32 {
-				rs := d.applyEachGroupVal(ent, op.Op)
-				rid := ret.colMap[op.col+op.Surfix].id
-				ret.valCols[rid] = rs
+		for i := id; i < len(d.groups); i += int(gSettings.ThreadNum) {
+			g := d.groups[i]
+			//fill keys
+			for k := 0; k < len(d.keyCols); k++ {
+				ret.idCols[k][i] = g.keys[k]
+			}
+
+			//agg
+			for _, opc := range opCols {
+				if opc.tp == String {
+					res := opc.strAgg(g)
+					ret.idCols[opc.id][i] = res
+				} else if opc.tp == Float32 {
+					res := opc.valAgg(g)
+					ret.valCols[opc.id][i] = res
+				}
 			}
 		}
 	})
 
-	// Adding keys
-	for j, name := range d.keyCols {
-		col := make([]string, len(d.groups))
-		for i, g := range d.groups {
-			col[i] = g.keys[j]
+	return
+}
+
+type RankOps func(g *GroupEntry) []int32
+
+func (d *DataFrameWithGroupBy) buildRankOp(name string) (ret RankOps) {
+	if c, suc := d.orderColMap[name]; suc {
+		ret = func(g *GroupEntry) []int32 {
+			return g.orderGroups[c.id].OrderedIDs()
 		}
+	} else {
+		colVals, err := d.getValCols(name)
+		if err != nil {
+			panic(err)
+		}
+		colVal := colVals[0]
 
-		cid := ret.colMap[name].id
-		ret.idCols[cid] = col
+		ret = func(g *GroupEntry) (r []int32) {
+			r = make([]int32, len(g.ids))
+			copy(r, g.ids)
+			sort.Slice(r, func(i, j int) bool { return colVal[r[i]] < colVal[r[j]] })
+			return
+		}
 	}
-
-	ret.shape[1] = len(d.groups)
-	ret.shape[0] = len(ret.cols)
 
 	return
 }
@@ -612,34 +468,54 @@ func (d *DataFrameWithGroupBy) Rank(pct bool, cols []string, suffix string) (ret
 		}()
 	}
 
-	histIds := make([]int32, len(cols))
-	for i, c := range cols {
-		cl, suc := d.histCols[c]
-		if !suc {
-			panic(fmt.Errorf("column [%s] does not have histogram, is that an Id column?", c))
-		}
-
-		histIds[i] = cl.id
+	if suc, missing := d.haveColumns(cols); !suc {
+		panic(fmt.Errorf("columns: %v does not exist in dataframe", missing))
 	}
 
-	rankCols := make([][]float32, len(cols))
-	for i := range rankCols {
-		rankCols[i] = make([]float32, d.shape[0])
+	// TODO try id columns
+
+	type entWithRankOp struct {
+		ColEntry
+		op RankOps
 	}
+
+	ret = Empty()
+	var rankEnts []entWithRankOp
+	for _, col := range cols {
+		ent, _ := ret.addColumn(col+suffix, false, false)
+		op := d.buildRankOp(col)
+		rankEnts = append(rankEnts, entWithRankOp{
+			ColEntry: ent,
+			op:       op,
+		})
+	}
+
+	ret.alloc(d.shape[0])
 
 	Parallel(int(gSettings.ThreadNum), true, func(id int) {
-		for i := id; i < len(rankCols); i += int(gSettings.ThreadNum) {
-			hid := histIds[i]
-			for _, g := range d.groups {
-				g.hists[hid].fillOrders(pct, rankCols[i])
+		for i := id; i < len(d.groups); i += int(gSettings.ThreadNum) {
+			g := d.groups[i]
+			for _, opc := range rankEnts {
+				order := opc.op(g)
+				target := ret.valCols[opc.id]
+				if len(order) == 1 {
+					target[order[0]] = 0
+					continue
+				}
+
+				if pct {
+					d := float32(len(order) - 1)
+					for i, r := range order {
+						target[r] = 1 - float32(i)/d
+					}
+				} else {
+					for i, r := range order {
+						target[r] = float32(i)
+					}
+				}
 			}
 		}
 	})
-
-	ret = Empty()
-	for i, c := range cols {
-		ret.PasteValColumn(c+suffix, rankCols[i])
-	}
 
 	return
 }
@@ -805,6 +681,7 @@ func (d *DataFrameWithGroupBy) FindOrder(t *DataFrameWithGroupBy, cols []string,
 			Log("Cost of finding order: %fms", tEnd.Sub(tStart).Seconds()*1000)
 		}()
 	}
+	d.BuildOrderGroups(cols)
 
 	var reterr error
 	defer func() {
@@ -838,7 +715,7 @@ func (d *DataFrameWithGroupBy) FindOrder(t *DataFrameWithGroupBy, cols []string,
 	for _, c := range cols {
 		entd := d.colMap[c]
 		entt := t.colMap[c]
-		hd := d.histCols[c]
+		hd := d.orderColMap[c]
 
 		if entt.tp == String {
 			reterr = fmt.Errorf("cannot find order for id column: %s", c)
@@ -874,7 +751,7 @@ func (d *DataFrameWithGroupBy) FindOrder(t *DataFrameWithGroupBy, cols []string,
 
 			for _, rid := range tg.ids {
 				for _, mp := range mapping {
-					order := dg.hists[mp.histIDLeft].findOrder(t.valCols[mp.srcIDRight][rid], d.valCols[mp.srcIDLeft])
+					order := dg.orderGroups[mp.histIDLeft].FindOrder(t.valCols[mp.srcIDRight][rid], d.valCols[mp.srcIDLeft])
 					orderF := float32(order)
 					if pct {
 						orderF = 1 - orderF/float32(len(dg.ids)-1)
