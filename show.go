@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func (d *DataFrame) Show() {
+func (d *DataFrame) renderMtx() (rawMtx [][]string, widths []int32) {
 	termSize, err := GetTermSize()
 	if err != nil {
 		Log("fail to get term size, %v", err)
@@ -18,8 +18,8 @@ func (d *DataFrame) Show() {
 	leakSizeY, leakSizeX := calcLeakSize(termSize)
 	//fmt.Fprintf(os.Stderr, "leak_size=[%d, %d]", leakSizeY, leakSizeX)
 
-	widths := make([]int32, len(d.cols)+1)
-	rawMtx := make([][]string, len(d.cols)+1)
+	widths = make([]int32, len(d.cols)+1)
+	rawMtx = make([][]string, len(d.cols)+1)
 	for i, col := range d.cols {
 		rawMtx[i+1] = d.renderColumn(col, leakSizeY)
 		widths[i+1] = maxShownWidth(rawMtx[i+1])
@@ -60,8 +60,11 @@ func (d *DataFrame) Show() {
 		widths = append(leftWidth, rightWidth...)
 	}
 
-	//fmt.Fprintf(os.Stderr, "size of mtx = %d, size of width = %d", len(rawMtx), len(widths))
-	//fmt.Fprintf(os.Stderr, "size of mtx[0] = %d, mtx[1] = %d", len(rawMtx[0]), len(rawMtx[1]))
+	return
+}
+
+func (d *DataFrame) Show() {
+	rawMtx, widths := d.renderMtx()
 
 	lineBuf := make([]string, len(rawMtx))
 	for i := 0; i < len(rawMtx[0]); i++ {
@@ -70,6 +73,29 @@ func (d *DataFrame) Show() {
 		}
 		fmt.Printf("%s\n", strings.Join(lineBuf, " "))
 	}
+}
+
+func (d *DataFrame) RenderJupyter() string {
+	rawMtx, _ := d.renderMtx()
+	b := strings.Builder{}
+	b.WriteString("<table><theade><th>")
+
+	for _, c := range rawMtx {
+		b.WriteString(fmt.Sprintf("<td>%s</td>", c[0]))
+	}
+
+	b.WriteString("</th></thead>")
+	b.WriteString("<tbody>")
+
+	for i := 1; i < len(rawMtx); i++ {
+		b.WriteString("<tr>")
+		for _, c := range rawMtx {
+			b.WriteString(fmt.Sprintf("<td>%s</td>", c[i]))
+		}
+		b.WriteString("</tr>")
+	}
+	b.WriteString("</tbody></table>")
+	return b.String()
 }
 
 func padding(s string, maxLen int32) string {
