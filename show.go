@@ -78,7 +78,7 @@ func (d *DataFrame) Show() {
 func (d *DataFrame) RenderJupyter() string {
 	rawMtx, _ := d.renderMtx()
 	b := strings.Builder{}
-	b.WriteString("<table><theade><th>")
+	b.WriteString("<table><thead><th>")
 
 	for _, c := range rawMtx {
 		b.WriteString(fmt.Sprintf("<td>%s</td>", c[0]))
