@@ -95,6 +95,8 @@ func (d *DataFrame) RenderJupyter() string {
 		b.WriteString("</tr>")
 	}
 	b.WriteString("</tbody></table>")
+
+	Log(b.String())
 	return b.String()
 }
 
