@@ -80,7 +80,7 @@ func (d *DataFrame) RenderJupyter() string {
 	b := strings.Builder{}
 	b.WriteString("<table><thead><th>")
 
-	for _, c := range rawMtx {
+	for _, c := range rawMtx[1:] {
 		b.WriteString(fmt.Sprintf("<td>%s</td>", c[0]))
 	}
 
