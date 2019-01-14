@@ -165,7 +165,7 @@ func (d *DataFrame) haveColumns(cols []string) (ret bool, missed []string) {
 	return
 }
 
-func (d *DataFrame) getValueColumnNames() (ret []string) {
+func (d *DataFrame) ValueColumnNames() (ret []string) {
 	for _, col := range d.cols {
 		if col.tp == Float32 {
 			ret = append(ret, col.Name)
@@ -174,7 +174,7 @@ func (d *DataFrame) getValueColumnNames() (ret []string) {
 	return
 }
 
-func (d *DataFrame) getIDColumnNames() (ret []string) {
+func (d *DataFrame) IDColumnNames() (ret []string) {
 	for _, col := range d.cols {
 		if col.tp == String {
 			ret = append(ret, col.Name)
