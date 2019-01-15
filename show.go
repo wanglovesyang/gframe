@@ -2,6 +2,7 @@ package gframe
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -16,7 +17,7 @@ func (d *DataFrame) renderMtx() (rawMtx [][]string, widths []int32) {
 	//Log("term_size=%v", termSize)
 	//fmt.Fprintf(os.Stderr, "term_size=%v", termSize)
 	leakSizeY, leakSizeX := calcLeakSize(termSize)
-	//fmt.Fprintf(os.Stderr, "leak_size=[%d, %d]", leakSizeY, leakSizeX)
+	fmt.Fprintf(os.Stderr, "leak_size=[%d, %d]\n", leakSizeY, leakSizeX)
 
 	widths = make([]int32, len(d.cols)+1)
 	rawMtx = make([][]string, len(d.cols)+1)
@@ -87,7 +88,7 @@ func (d *DataFrame) RenderJupyter() string {
 	b.WriteString("</th></thead>")
 	b.WriteString("<tbody>")
 
-	for i := 1; i < len(rawMtx); i++ {
+	for i := 1; i < len(rawMtx[0]); i++ {
 		b.WriteString("<tr>")
 		for _, c := range rawMtx {
 			b.WriteString(fmt.Sprintf("<td>%s</td>", c[i]))
@@ -131,6 +132,7 @@ func (d *DataFrame) mockIdColumns(leakSize int32) (ret []string) {
 		}
 	} else {
 		ret = make([]string, 2*leakSize+2)
+		fmt.Fprintf(os.Stderr, "mtx size h = %d\n", len(ret))
 		ret[0] = ""
 		for i := 0; i < int(leakSize); i++ {
 			ret[i+1] = strconv.FormatInt(int64(i), 10)
@@ -175,6 +177,7 @@ func (d *DataFrame) renderColumn(ent ColEntry, leakSize int32) (ret []string) {
 			}
 		}
 	} else {
+		fmt.Fprintln(os.Stderr, "render with ...")
 		ret = make([]string, 2*leakSize+2)
 		ret[0] = ent.Name
 		if ent.tp == String {

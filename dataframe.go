@@ -397,18 +397,19 @@ func (d *DataFrame) SelectByColumns(cols ...string) (ret *DataFrame) {
 
 	for _, col := range cols {
 		ent := d.colMap[col]
+		rent := ent
 
 		switch ent.tp {
 		case String:
-			ent.id = int32(len(ret.idCols))
+			rent.id = int32(len(ret.idCols))
 			ret.idCols = append(ret.idCols, d.idCols[ent.id])
 		case Float32:
-			ent.id = int32(len(ret.valCols))
+			rent.id = int32(len(ret.valCols))
 			ret.valCols = append(ret.valCols, d.valCols[ent.id])
 		}
 
-		ret.colMap[col] = ent
-		ret.cols = append(ret.cols, ent)
+		ret.colMap[col] = rent
+		ret.cols = append(ret.cols, rent)
 	}
 
 	ret.shape[0] = d.shape[0]
